@@ -115,15 +115,15 @@ function sigmoid(variable: ContinuousVariableInternal, timeUntilPhaseChange: num
 
 	const t = variable.tDelta - timeUntilPhaseChange
 	const tMid = variable.tDelta / 2
-	const tStretchFactor = 1 / ((Math.pow(variable.tDelta, 2)) / Math.pow(steepness, 2))
-	const tStretchCorrector = variable.tDelta / steepness
+	const tStretchFactor = Math.pow(steepness, 2) / Math.pow(variable.tDelta, 2)
+	const tStretchCorrector = steepness / variable.tDelta
 
 	const xDelta = variable.xTarget - variable.xStart
 	const xStretcher = xDelta / (2 * Math.atan(steepness / 2))
 
 	const atanDerivative = (1 / (Math.pow(t - tMid, 2) * tStretchFactor + 1))
 
-	return (atanDerivative * xStretcher / tStretchCorrector)
+	return (atanDerivative * xStretcher * tStretchCorrector)
 }
 
 function sigmoidDelayed(variable: ContinuousVariableInternal, timeUntilPhaseChange: number): number {
@@ -136,8 +136,8 @@ function sigmoidDelayed(variable: ContinuousVariableInternal, timeUntilPhaseChan
 	const tDeltaShifted = variable.tDelta - t0Shifted
 	const tShiftedMid = tMid + (variable.tDelta - tMid) / tShiftFrac  // Shifted midpoint
 
-	const tStretchFactor = 1 / ((Math.pow(tDeltaShifted, 2)) / Math.pow(steepness, 2))
-	const tStretchCorrector = tDeltaShifted / steepness
+	const tStretchFactor = Math.pow(steepness, 2) / Math.pow(tDeltaShifted, 2)
+	const tStretchCorrector = steepness / tDeltaShifted
 
 	const xDelta = variable.xTarget - variable.xStart
 	const xStretcher = xDelta / (2 * Math.atan(steepness / 2))
@@ -147,5 +147,5 @@ function sigmoidDelayed(variable: ContinuousVariableInternal, timeUntilPhaseChan
 	if (t < t0Shifted) {
 		console.log("straight")
 		return 0
-	} else return atanDerivative * xStretcher / tStretchCorrector
+	} else return atanDerivative * xStretcher * tStretchCorrector
 }
