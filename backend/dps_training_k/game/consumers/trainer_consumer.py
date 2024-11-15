@@ -33,6 +33,8 @@ class TrainerConsumer(AbstractConsumer):
         PERSONNEL_ADD = "personnel-add"
         PERSONNEL_DELETE = "personnel-delete"
         PERSONNEL_RENAME = "personnel-rename"
+        LOG_RULE_ADD = "log-rule-add"
+        LOG_RULE_DELETE = "log-rule-delete"
 
     class TrainerOutgoingMessageTypes:
         LOG_UPDATE = "log-update"
@@ -113,6 +115,15 @@ class TrainerConsumer(AbstractConsumer):
                 self.handle_rename_personnel,
                 "personnelId",
                 "personnelName",
+            ),
+            self.TrainerIncomingMessageTypes.LOG_RULE_ADD: (
+                self.handle_add_log_rule,
+                "logRuleName",
+                "fields",
+            ),
+            self.TrainerIncomingMessageTypes.LOG_RULE_DELETE: (
+                self.handle_delete_log_rule,
+                "logRuleId",
             ),
         }
         self.REQUESTS_MAP.update(trainer_request_map)
@@ -351,6 +362,12 @@ class TrainerConsumer(AbstractConsumer):
         personnel = Personnel.objects.get(id=personnel_id)
         personnel.name = personnel_name
         personnel.save(update_fields=["name"])
+
+    def handle_add_log_rule(self, _, log_rule_name, fields):
+        pass
+
+    def handle_delete_log_rule(self, _, log_rule_id):
+        pass
 
     # ------------------------------------------------------------------------------------------------------------------------------------------------
     # methods used internally

@@ -21,10 +21,34 @@ RUN apt-get update && apt-get install --no-install-recommends -y \
   libpq-dev gcc python3-dev musl-dev \
   # Translations dependencies
   gettext \
+  # OCaml and MonPoly dependencies
+  git opam \
   # cleaning up unused files
   && apt-get purge -y --auto-remove -o APT::AutoRemove::RecommendsImportant=false \
   && rm -rf /var/lib/apt/lists/*
 
+# Initialize OPAM and switch to the required OCaml version
+RUN opam init -y --disable-sandboxing && \
+    opam switch create 4.11.1 && \
+    eval $(opam env) && \
+    opam install dune -y
+
+# Clone the MonPoly repository
+RUN git clone https://bitbucket.org/monpoly/monpoly.git /home/opam/monpoly
+
+# Set the working directory
+WORKDIR /home/opam/monpoly
+
+# Install dependencies
+RUN eval $(opam env) && opam install --deps-only -y .
+
+# Build and install MonPoly
+RUN eval $(opam env) && dune build --release && dune install
+ENV PATH="/home/opam/.opam/4.11.1/bin:${PATH}"
+# Verify MonPoly installation and PATH
+RUN eval $(opam env) &&which monpoly && echo $PATH
+
+WORKDIR ${APP_HOME}
 # Install requirements
 RUN pip install -r requirements.txt
 

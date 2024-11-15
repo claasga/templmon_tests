@@ -1,4 +1,5 @@
 import logging
+import asyncio
 
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
@@ -184,34 +185,39 @@ class ActionInstanceDispatcher(ChannelNotifier):
             return
 
         message = None
+        category = models.LogEntry.CATEGORIES.ACTION
+        type = None
+        content = {}
+        content["name"] = applied_action.name
         send_personnel_and_material = False
         if applied_action.state_name == models.ActionInstanceStateNames.IN_PROGRESS:
-            message = f'"{applied_action.name}" wurde gestartet'
+            type = models.LogEntry.TYPES.STARTED
             send_personnel_and_material = True
         elif applied_action.state_name == models.ActionInstanceStateNames.FINISHED:
-            message = f'"{applied_action.name}" wurde abgeschlossen'
+            type = models.LogEntry.TYPES.FINISHED
             if applied_action.template.category == template.Action.Category.PRODUCTION:
                 named_produced_resources = {
                     material.name: amount
                     for material, amount in applied_action.template.produced_resources().items()
                 }
-                message += f" und hat {str(named_produced_resources)} produziert"
+                content["produced"] = str(named_produced_resources)
         elif (
             applied_action.state_name == models.ActionInstanceStateNames.CANCELED
             and applied_action.states.filter(
                 name=models.ActionInstanceStateNames.IN_PROGRESS
             ).exists()
         ):
-            message = f'"{applied_action.name}" wurde abgebrochen'
+            type = models.LogEntry.TYPES.CANCELED
         elif applied_action.state_name == models.ActionInstanceStateNames.IN_EFFECT:
-            message = f'"{applied_action.name}" beginnt zu wirken'
+            type = models.LogEntry.TYPES.IN_EFFECT
         elif applied_action.state_name == models.ActionInstanceStateNames.EXPIRED:
-            message = f'"{applied_action.name}" wirkt nicht mehr'
-
+            type = models.LogEntry.TYPES.EXPIRED
         if message and send_personnel_and_material:
             log_entry = models.LogEntry.objects.create(
                 exercise=applied_action.exercise,
-                message=message,
+                category=category,
+                type=type,
+                content=content,
                 patient_instance=applied_action.patient_instance,
                 area=applied_action.destination_area,
                 is_dirty=True,
@@ -229,7 +235,9 @@ class ActionInstanceDispatcher(ChannelNotifier):
         elif message:
             log_entry = models.LogEntry.objects.create(
                 exercise=applied_action.exercise,
-                message=message,
+                category=category,
+                type=type,
+                content=content,
                 patient_instance=applied_action.patient_instance,
                 area=applied_action.destination_area,
             )
@@ -276,15 +284,16 @@ class ExerciseDispatcher(ChannelNotifier):
     def create_trainer_log(cls, exercise, changes, is_updated):
         if not is_updated:
             return
-        message = ""
         if (
             changes
             and "state" in changes
             and exercise.state == models.Exercise.StateTypes.RUNNING
         ):
-            message = "Übung gestartet"
-        if message:
-            models.LogEntry.objects.create(exercise=exercise, message=message)
+            models.LogEntry.objects.create(
+                exercise=exercise,
+                category=models.LogEntry.CATEGORIES.EXERCISE,
+                type=models.LogEntry.TYPES.STARTED,
+            )
 
     @classmethod
     def get_exercise(cls, exercise):
@@ -306,7 +315,39 @@ class ExerciseDispatcher(ChannelNotifier):
         cls._notify_group(channel, event)
 
 
-class LogEntryDispatcher(ChannelNotifier):
+class Observable:
+    _exercise_subscribers = {}
+
+    @classmethod
+    def subscribe_to_exercise(cls, exercise, subscriber, send_past_logs=False):
+        if exercise in cls._exercise_subscribers:
+            cls._exercise_subscribers[exercise].add(subscriber)
+        else:
+            cls._exercise_subscribers[exercise] = {subscriber}
+        if send_past_logs:
+            past_logs = models.LogEntry.objects.filter(exercise=exercise)
+            for log_entry in past_logs:
+                subscriber.receive_log_entry(log_entry)
+
+    @classmethod
+    def unsubscribe_from_exercise(cls, exercise, subscriber):
+        if exercise in cls._exercise_subscribers:
+            cls._exercise_subscribers[exercise].remove(subscriber)
+
+    @classmethod
+    def _puplish_obj(cls, obj, exercise):
+        if exercise in cls._exercise_subscribers:
+            for subscriber in cls._exercise_subscribers[exercise]:
+                asyncio.run(subscriber.receive_log_entry(obj))
+
+
+class LogEntryDispatcher(Observable, ChannelNotifier):
+
+    @classmethod
+    def save_and_notify(cls, obj, changes, save_origin, *args, **kwargs):
+        super().save_and_notify(obj, changes, save_origin, *args, **kwargs)
+        cls._puplish_obj(obj, obj.exercise)
+
     @classmethod
     def get_group_name(cls, exercise):
         return f"{exercise.__class__.__name__}_{exercise.id}_log"
@@ -349,15 +390,20 @@ class MaterialInstanceDispatcher(ChannelNotifier):
         changes_set = set(changes) if changes else set()
         assignment_changes = {"patient_instance", "area", "lab"}
 
+        category = models.LogEntry.CATEGORIES.MATERIAL
+        type = None
+        content = {"name": material.name}
         if not is_updated:
-            message = f"{material.name} ist erschienen"
+            type = models.LogEntry.TYPES.ARRIVED
             if material.area:
-                message += f" in {material.area}"
+                content["location"] = str(material.area)
             if material.lab:
-                message += f" in {material.lab}"
+                content["location"] = str(material.lab)
             log_entry = models.LogEntry.objects.create(
                 exercise=cls.get_exercise(material),
-                message=message,
+                category=category,
+                type=type,
+                content=content,
                 is_dirty=True,
             )
             log_entry.materials.add(material)
@@ -365,15 +411,18 @@ class MaterialInstanceDispatcher(ChannelNotifier):
             return
 
         if changes_set & assignment_changes:
-            message = f"{material.name} wurde zugewiesen"
+            type = models.LogEntry.TYPES.ASSIGNED
             current_location = material.attached_instance()
+            content["location_type"] = current_location.frontend_model_name()
+            content["location_name"] = current_location.name
             log_entry = None
 
             if isinstance(current_location, models.PatientInstance):
-                message += f" zu {current_location.frontend_model_name()} {current_location.name}"
                 log_entry = models.LogEntry.objects.create(
                     exercise=cls.get_exercise(material),
-                    message=message,
+                    category=category,
+                    type=type,
+                    content=content,
                     patient_instance=current_location,
                     is_dirty=True,
                 )
@@ -381,15 +430,18 @@ class MaterialInstanceDispatcher(ChannelNotifier):
                 message += f" zu {current_location.frontend_model_name()} {current_location.name}"
                 log_entry = models.LogEntry.objects.create(
                     exercise=cls.get_exercise(material),
-                    message=message,
+                    category=category,
+                    type=type,
+                    content=content,
                     area=current_location,
                     is_dirty=True,
                 )
             if isinstance(current_location, models.Lab):
-                message += f" zu {current_location.frontend_model_name()} {current_location.name}"
                 log_entry = models.LogEntry.objects.create(
                     exercise=cls.get_exercise(material),
-                    message=message,
+                    category=category,
+                    type=type,
+                    content=content,
                     is_dirty=True,
                 )
             if log_entry:
@@ -426,38 +478,44 @@ class PatientInstanceDispatcher(ChannelNotifier):
     @classmethod
     def create_trainer_log(cls, patient_instance, changes, is_updated):
         changes_set = set(changes) if changes else set()
+        category = models.LogEntry.CATEGORIES.PATIENT
+        type = None
         message = None
+        content = {"name": patient_instance.name, "code": str(patient_instance.code)}
 
         if not is_updated:
-            message = f"Patient*in {patient_instance.name}({patient_instance.code}) wurde eingeliefert."
+            type = models.LogEntry.TYPES.ARRIVED
             if (
                 patient_instance.static_information
                 and patient_instance.static_information.injury
             ):
-                message += f" Patient*in hat folgende Verletzungen: {patient_instance.static_information.injury}"
+                content["injuries"] = str(patient_instance.static_information.injury)
         elif changes and "triage" in changes:
             # get_triage_display gets the long version of a ChoiceField
-            message = f"Patient*in {patient_instance.name} wurde triagiert auf {patient_instance.get_triage_display()}"
+            content["level"] = str(patient_instance.get_triage_display())
+            type = models.LogEntry.TYPES.TRIAGED
         elif changes and changes_set & cls.location_changes:
-            message = f"Patient*in {patient_instance.name} wurde verlegt"
+            type = models.LogEntry.TYPES.MOVED
             current_location = patient_instance.attached_instance()
+            content["location_type"] = current_location.frontend_model_name()
+            content["location_name"] = str(current_location.name)
 
-            if isinstance(current_location, models.Area):
-                message += f" nach {current_location.frontend_model_name()} {current_location.name}"
-            if isinstance(current_location, models.Lab):
-                message += f" nach {current_location.frontend_model_name()} {current_location.name}"
         if message:
             if patient_instance.area:
                 models.LogEntry.objects.create(
                     exercise=cls.get_exercise(patient_instance),
-                    message=message,
+                    content=content,
+                    category=category,
+                    type=type,
                     patient_instance=patient_instance,
                     area=patient_instance.area,
                 )
             else:
                 models.LogEntry.objects.create(
                     exercise=cls.get_exercise(patient_instance),
-                    message=message,
+                    category=category,
+                    type=type,
+                    content=content,
                     patient_instance=patient_instance,
                 )
 
@@ -507,16 +565,19 @@ class PersonnelDispatcher(ChannelNotifier):
     @classmethod
     def create_trainer_log(cls, personnel, changes, is_updated):
         changes_set = set(changes) if changes else set()
-
+        content = {"name": personnel.name}
         if not is_updated:
-            message = f"{personnel.name} ist eingetroffen"
             if personnel.area:
-                message += f" in {personnel.area}"
+                content["location_type"] = personnel.area.frontend_model_name()
+                content["location_name"] = personnel.area.name
             if personnel.lab:
-                message += f" in {personnel.lab}"
+                content["location_type"] = personnel.lab.frontend_model_name()
+                content["location_name"] = personnel.lab.name
             log_entry = models.LogEntry.objects.create(
                 exercise=cls.get_exercise(personnel),
-                message=message,
+                category=models.LogEntry.CATEGORIES.PERSONNEL,
+                type=models.LogEntry.TYPES.ARRIVED,
+                content=content,
                 is_dirty=True,
             )
             log_entry.personnel.add(personnel)
@@ -524,31 +585,35 @@ class PersonnelDispatcher(ChannelNotifier):
             return
 
         if changes_set & cls.assignment_changes:
-            message = f"{personnel.name} wurde zugewiesen"
             current_location = personnel.attached_instance()
+            content["location_type"] = current_location.frontend_model_name()
+            content["location_name"] = current_location.name
             log_entry = None
 
             if isinstance(current_location, models.PatientInstance):
-                message += f" zu {current_location.frontend_model_name()} {current_location.name}"
                 log_entry = models.LogEntry.objects.create(
                     exercise=cls.get_exercise(personnel),
-                    message=message,
+                    category=models.LogEntry.CATEGORIES.PERSONNEL,
+                    type=models.LogEntry.TYPES.ASSIGNED,
+                    content=content,
                     patient_instance=current_location,
                     is_dirty=True,
                 )
             if isinstance(current_location, models.Area):
-                message += f" zu {current_location.frontend_model_name()} {current_location.name}"
                 log_entry = models.LogEntry.objects.create(
                     exercise=cls.get_exercise(personnel),
-                    message=message,
+                    category=models.LogEntry.CATEGORIES.PERSONNEL,
+                    type=models.LogEntry.TYPES.UNASSIGNED,
+                    content=content,
                     area=current_location,
                     is_dirty=True,
                 )
             if isinstance(current_location, models.Lab):
-                message += f" zu {current_location.frontend_model_name()} {current_location.name}"
                 log_entry = models.LogEntry.objects.create(
                     exercise=cls.get_exercise(personnel),
-                    message=message,
+                    category=models.LogEntry.CATEGORIES.PERSONNEL,
+                    type=models.LogEntry.TYPES.ASSIGNED,
+                    content=content,
                     is_dirty=True,
                 )
             if log_entry:

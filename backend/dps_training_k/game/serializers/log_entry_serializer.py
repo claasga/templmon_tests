@@ -7,7 +7,7 @@ import game.models.personnel as pe
 
 class LogEntrySerializer(serializers.ModelSerializer):
     logId = serializers.IntegerField(source="local_id")
-    logMessage = serializers.CharField(source="message")
+    logMessage = serializers.SerializerMethodField()
     logTime = serializers.SerializerMethodField()
     areaId = serializers.SerializerMethodField()
     patientId = serializers.SerializerMethodField()
@@ -36,6 +36,9 @@ class LogEntrySerializer(serializers.ModelSerializer):
         # Ensure the timestamp is timezone aware
         timestamp = obj.timestamp.replace(tzinfo=pytz.UTC)
         return int(timestamp.timestamp() * 1000)
+
+    def get_logMessage(self, obj):
+        return obj.message
 
     def get_areaId(self, obj):
         return obj.area.pk if obj.area else None

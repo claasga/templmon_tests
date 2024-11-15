@@ -6,6 +6,7 @@ from helpers.eventable import NonEventable
 from .lab import Lab
 from .scheduled_event import ScheduledEvent
 from .log_entry import LogEntry
+from ..templmon.log_rule import LogRuleRunner
 
 
 class Exercise(NonEventable, models.Model):
@@ -56,6 +57,12 @@ class Exercise(NonEventable, models.Model):
         self.update_state(Exercise.StateTypes.RUNNING)
         for patient in owned_patients:
             patient.apply_pretreatments()
+        # ToDo: Add logrulerunner for testing purposes
+        from ..channel_notifications import LogEntryDispatcher
+
+        test_log_runner = LogRuleRunner(self, LogEntryDispatcher)
+        print("LogRuleRunner created")
+        test_log_runner.start_log_rule()
 
     def save(self, *args, **kwargs):
         changes = kwargs.get("update_fields", None)
