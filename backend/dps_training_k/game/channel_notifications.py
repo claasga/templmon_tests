@@ -338,7 +338,7 @@ class Observable:
     def _puplish_obj(cls, obj, exercise):
         if exercise in cls._exercise_subscribers:
             for subscriber in cls._exercise_subscribers[exercise]:
-                asyncio.run(subscriber.receive_log_entry(obj))
+                async_to_sync(subscriber.receive_log_entry(obj))
 
 
 class LogEntryDispatcher(Observable, ChannelNotifier):

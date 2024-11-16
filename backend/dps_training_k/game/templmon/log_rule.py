@@ -51,7 +51,10 @@ class LogRuleRunner:
     def __del__(self):
         pass
 
-    async def receive_log_entry(self, log_entry):
+    def receive_log_entry(self, log_entry):
+        asyncio.run_coroutine_threadsafe(self._receive_log_entry(log_entry), self.loop)
+
+    async def _receive_log_entry(self, log_entry):
         print("*******************************************")
         print("Received log entry: ", log_entry.pk)
         monpolified_log_entry = transform(log_entry)
@@ -70,7 +73,7 @@ class LogRuleRunner:
         self, loop: asyncio.AbstractEventLoop, mfotl_path, sig_path, rewrite=True
     ):
         """Has to be launched in a separate thread"""
-        monpoly = await asyncio.create_subprocess_exec(
+        self.monpoly = await asyncio.create_subprocess_exec(
             "monpoly",
             "-sig",
             sig_path,
@@ -79,11 +82,14 @@ class LogRuleRunner:
             "" if rewrite else "-no_rw",
             env=os.environ.copy(),  # Ensure the environment variables are passed
         )
-        loop.call_soon_threadsafe(
-            target=lambda: asyncio.create_task(self.read_output(monpoly))
-        )
-        await self.monpoly_started_event.wait()
-        return monpoly
+        """loop.call_soon_threadsafe(
+            lambda: asyncio.create_task(self.read_output(self.monpoly))
+        )"""
+        asyncio.run_coroutine_threadsafe(self.read_output(self.monpoly), loop)
+        self.monpoly_started_event.wait()
+        print("MonPoly instance: ")
+        print(self.monpoly)
+        return self.monpoly
 
     def start_log_rule(self):
         print(
@@ -101,11 +107,14 @@ class LogRuleRunner:
             threading.Thread(target=launch_listener_loop, args=(self.loop,)).start()
             print("started loop")
         print("Trying to run monpoly thread")
-        self.monpoly = asyncio.run(
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        mfotl_path = os.path.join(base_dir, "personnel_check.mfotl")
+        sig_path = os.path.join(base_dir, "kdps.sig")
+        asyncio.run(
             self._launch_monpoly(
                 self.loop,
-                "/home/claas/Desktop/BP/dps.training_k/backend/dps_training_k/game/templmon/personnel_check.mfotl",
-                "/home/claas/Desktop/BP/dps.training_k/backend/dps_training_k/game/templmon/kdps.sig",
+                mfotl_path,
+                sig_path,
             )
         )
         print("Succeeded starting monpoly")

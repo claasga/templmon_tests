@@ -44,7 +44,7 @@ RUN eval $(opam env) && opam install --deps-only -y .
 
 # Build and install MonPoly
 RUN eval $(opam env) && dune build --release && dune install
-ENV PATH="/home/opam/.opam/4.11.1/bin:${PATH}"
+ENV PATH="/root/.opam/4.11.1/bin:${PATH}"
 # Verify MonPoly installation and PATH
 RUN eval $(opam env) &&which monpoly && echo $PATH
 
