@@ -1,5 +1,5 @@
-assign_personnel(string, string)
-unassign_personnel(string)
+assigned_personnel(string, string)
+unassigned_personnel(string)
 personnel_arrived(string, string)
 
 patient_action_started(string, string)

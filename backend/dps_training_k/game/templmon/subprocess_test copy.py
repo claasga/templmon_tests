@@ -4,22 +4,27 @@ import os
 
 tasks = []
 
-log = """@10 assign_personnel(per_n_1, pat_n_1)
-@13 assign_personnel(per_n_2, pat_n_1)
-@16 assign_personnel(per_n_3, pat_n_1)
-@19 assign_personnel(per_n_4, pat_n_1)
-@19.5 unknown_log_type(lalalalal)
-@20 assign_personnel(per_n_5, pat_n_1)
-@21 unassign_personnel(per_n_1)
-@22 unassign_personnel(per_n_2)
-@30 assign_personnel(per_n_1, pat_n_1)
-@31 assign_personnel(per_n_2, pat_n_1)
-@32 unassign_personnel(per_n_3)
-@33 assign_personnel(per_n_3, pat_n_2)
-@35 assign_personnel(per_n_6, pat_n_2)
-@37 assign_personnel(per_n_7, pat_n_2)
-@39 assign_personnel(per_n_8, pat_n_2)"""
-
+# log = """@10 assigned_personnel(per_n_1, pat_n_1)
+# @13 assigned_personnel(per_n_2, pat_n_1)
+# @16 assigned_personnel(per_n_3, pat_n_1)
+# @19 assigned_personnel(per_n_4, pat_n_1)
+# @19.5 unknown_log_type(lalalalal)
+# @20 assigned_personnel(per_n_5, pat_n_1)
+# @21 unassigned_personnel(per_n_1)
+# @22 unassigned_personnel(per_n_2)
+# @30 assigned_personnel(per_n_1, pat_n_1)
+# @31 assigned_personnel(per_n_2, pat_n_1)
+# @32 unassigned_personnel(per_n_3)
+# @33 assigned_personnel(per_n_3, pat_n_2)
+# @35 assigned_personnel(per_n_6, pat_n_2)
+# @37 assigned_personnel(per_n_7, pat_n_2)
+# @39 assigned_personnel(per_n_8, pat_n_2)"""
+log = """@70 assigned_personnel(hans, peter)
+@71 assigned_personnel(hans, peter)
+@72 assigned_personnel(hans, peter)
+@73 assigned_personnel(hans, peter)
+@74 assigned_personnel(hans, peter)
+"""
 # Get the absolute path of the current directory
 base_dir = os.path.dirname(os.path.abspath(__file__))
 
@@ -57,7 +62,8 @@ async def main():
                 "-sig",
                 os.path.join(base_dir, "kdps.sig"),
                 "-formula",
-                os.path.join(base_dir, "personnel_check.mfotl"),
+                os.path.join(base_dir, "personnel_check copy.mfotl"),
+                "-verbose",
             )
         )
 

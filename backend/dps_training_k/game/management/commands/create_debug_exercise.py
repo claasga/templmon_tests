@@ -21,7 +21,9 @@ class Command(BaseCommand):
         else:
             PatientInstance.objects.get(frontend_id=123456).delete()
 
-        user, created = User.objects.get_or_create(username="test", user_type=User.UserType.TRAINER)
+        user, created = User.objects.get_or_create(
+            username="test", user_type=User.UserType.TRAINER
+        )
         if created:
             user.set_password("password")
             user.save()
@@ -58,9 +60,7 @@ class Command(BaseCommand):
                 "patient_instance": self.patient,
             },
         )
-
-        TrainerConsumer.handle_start_exercise(_, self.exercise)
-
+        # TrainerConsumer.handle_start_exercise(_, self.exercise)
         self.stdout.write(
             self.style.SUCCESS("Successfully added debug_exercise to the database")
         )

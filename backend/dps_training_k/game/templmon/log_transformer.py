@@ -34,12 +34,20 @@ def transform(log_entry: le.LogEntry):
     log_str = f"@{timestamp} "
 
     if log_type == MonpolyLogEntry.ASSIGNED_PERSONNEL:
-        personnel_id = log_entry.personnel[0].pk
+        print(f"field: {log_entry.personnel}")
+        print(f"Queryset: {log_entry.personnel.all()}")
+        print(f"Entry: {log_entry.personnel.all().first()}")
+        print(f"key: {log_entry.personnel.all().first().pk}")
+        personnel_id = log_entry.personnel.all().first().pk
         patient_id = log_entry.patient_instance.pk
         log_str += f"assigned_personnel({personnel_id}, {patient_id})"
+        # log_str += f"assigned_personnel(144, {patient_id})"
+
     elif log_type == MonpolyLogEntry.UNASSIGNED_PERSONNEL:
-        personnel_id = log_entry.personnel[0].pk
+        personnel_id = log_entry.personnel.all().first().pk
         log_str += f"unassigned_personnel({personnel_id})"
+        # log_str += f"unassigned_personnel(144)"
+
     elif log_type == MonpolyLogEntry.PATIENT_ARRIVED:
         patient_id = log_entry.patient_instance.pk
         area_id = log_entry.area.pk

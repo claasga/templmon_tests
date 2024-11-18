@@ -44,28 +44,43 @@ class LogRuleRunner:
     loop = asyncio.new_event_loop()
 
     def __init__(self, exercise, log):
-        print("init called with ", str(log))
         self.log = log
         self.exercise = exercise
+        self.monpoly_started_event = asyncio.Event()
 
     def __del__(self):
         pass
 
     def receive_log_entry(self, log_entry):
+
         asyncio.run_coroutine_threadsafe(self._receive_log_entry(log_entry), self.loop)
 
     async def _receive_log_entry(self, log_entry):
-        print("*******************************************")
-        print("Received log entry: ", log_entry.pk)
-        monpolified_log_entry = transform(log_entry)
-        self.monpoly.stdin.write(monpolified_log_entry.encode())
-        await self.monpoly.stdin.drain()
+        print(f"Received log entry: {log_entry}")
+        await self.monpoly_started_event.wait()  # Wait until monpoly is ready
+        print("Monpoly is ready")
+        try:
+            monpolified_log_entry = transform(log_entry)
+        except Exception as e:
+            raise e
+        print(f"Monpolified log entry: {monpolified_log_entry}")
+        if self.monpoly.stdin:
+            try:
+                encoded = monpolified_log_entry.encode()
+                self.monpoly.stdin.write(encoded)
+                await self.monpoly.stdin.drain()
+            except Exception as e:
+                raise e
+        else:
+            raise Exception("Monpoly is not running")
+        print("Log entry sent")
 
     async def read_output(self, process):
         self.monpoly_started_event.set()
         while True:
             line = await process.stdout.readline()
             if not line:
+                print("process terminated")
                 break
             print(f"Received: {line.decode('utf-8')[:-1]}")
 
@@ -79,47 +94,36 @@ class LogRuleRunner:
             sig_path,
             "-formula",
             mfotl_path,
+            "-verbose",
             "" if rewrite else "-no_rw",
             env=os.environ.copy(),  # Ensure the environment variables are passed
+            stdin=asyncio.subprocess.PIPE,  # Allow writing to stdin
+            stdout=asyncio.subprocess.PIPE,  # Capture stdout
+            stderr=asyncio.subprocess.PIPE,  # Optionally capture stderr
         )
-        """loop.call_soon_threadsafe(
-            lambda: asyncio.create_task(self.read_output(self.monpoly))
-        )"""
-        asyncio.run_coroutine_threadsafe(self.read_output(self.monpoly), loop)
-        self.monpoly_started_event.wait()
-        print("MonPoly instance: ")
-        print(self.monpoly)
-        return self.monpoly
+        asyncio.create_task(self.read_output(self.monpoly))
+        self.monpoly_started_event.set()  # Signal that monpoly is ready
 
     def start_log_rule(self):
-        print(
-            "Current state of the loop: Is it running?" + str(self.loop.is_running())
-            if self.loop
-            else "No loop"
-        )
-
         def launch_listener_loop(loop: asyncio.AbstractEventLoop):
             asyncio.set_event_loop(loop)
             loop.run_forever()
 
-        self.monpoly_started_event = threading.Event()
         if (not self.loop) or (not self.loop.is_running()):
             threading.Thread(target=launch_listener_loop, args=(self.loop,)).start()
-            print("started loop")
-        print("Trying to run monpoly thread")
+
         base_dir = os.path.dirname(os.path.abspath(__file__))
         mfotl_path = os.path.join(base_dir, "personnel_check.mfotl")
         sig_path = os.path.join(base_dir, "kdps.sig")
-        asyncio.run(
+        asyncio.run_coroutine_threadsafe(
             self._launch_monpoly(
                 self.loop,
                 mfotl_path,
                 sig_path,
-            )
+            ),
+            self.loop,
         )
-        print("Succeeded starting monpoly")
         self.log.subscribe_to_exercise(self.exercise, self, send_past_logs=True)
-        print("Subscribed to exercise")
 
         # startup extra asyncio_thread as loop
         # asyncio.run(lauch_monpoly())
@@ -132,4 +136,4 @@ class LogRuleRunner:
         #
         #
         #
-        # atexitstuff
+        # atexitstuff"""

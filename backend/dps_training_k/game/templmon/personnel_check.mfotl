@@ -1,6 +1,6 @@
     (personnel_count <- CNT personnel_id;patient_id 
-            (NOT unassign_personnel(personnel_id)) 
+            (NOT unassigned_personnel(personnel_id)) 
         SINCE[0,*] 
-            assign_personnel(personnel_id, patient_id))
+            assigned_personnel(personnel_id, patient_id))
 AND
     (personnel_count >= 4)

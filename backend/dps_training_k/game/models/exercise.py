@@ -61,8 +61,9 @@ class Exercise(NonEventable, models.Model):
         from ..channel_notifications import LogEntryDispatcher
 
         test_log_runner = LogRuleRunner(self, LogEntryDispatcher)
-        print("LogRuleRunner created")
+        # print("LogRuleRunner created")
         test_log_runner.start_log_rule()
+        # print("LogRuleRunner started")
 
     def save(self, *args, **kwargs):
         changes = kwargs.get("update_fields", None)

@@ -325,9 +325,10 @@ class Observable:
         else:
             cls._exercise_subscribers[exercise] = {subscriber}
         if send_past_logs:
-            past_logs = models.LogEntry.objects.filter(exercise=exercise)
+            past_logs = models.LogEntry.objects.filter(exercise=exercise).order_by("pk")
             for log_entry in past_logs:
                 subscriber.receive_log_entry(log_entry)
+            # subscriber.receive_log_entry(past_logs[0])
 
     @classmethod
     def unsubscribe_from_exercise(cls, exercise, subscriber):
@@ -336,9 +337,13 @@ class Observable:
 
     @classmethod
     def _puplish_obj(cls, obj, exercise):
+        if not obj.is_valid():
+            return
+
+        print("Publishing obj")
         if exercise in cls._exercise_subscribers:
             for subscriber in cls._exercise_subscribers[exercise]:
-                async_to_sync(subscriber.receive_log_entry(obj))
+                subscriber.receive_log_entry(obj)
 
 
 class LogEntryDispatcher(Observable, ChannelNotifier):
@@ -480,7 +485,6 @@ class PatientInstanceDispatcher(ChannelNotifier):
         changes_set = set(changes) if changes else set()
         category = models.LogEntry.CATEGORIES.PATIENT
         type = None
-        message = None
         content = {"name": patient_instance.name, "code": str(patient_instance.code)}
 
         if not is_updated:
@@ -500,7 +504,7 @@ class PatientInstanceDispatcher(ChannelNotifier):
             content["location_type"] = current_location.frontend_model_name()
             content["location_name"] = str(current_location.name)
 
-        if message:
+        if content:
             if patient_instance.area:
                 models.LogEntry.objects.create(
                     exercise=cls.get_exercise(patient_instance),
@@ -599,7 +603,7 @@ class PersonnelDispatcher(ChannelNotifier):
                     patient_instance=current_location,
                     is_dirty=True,
                 )
-            if isinstance(current_location, models.Area):
+            elif isinstance(current_location, models.Area):
                 log_entry = models.LogEntry.objects.create(
                     exercise=cls.get_exercise(personnel),
                     category=models.LogEntry.CATEGORIES.PERSONNEL,
@@ -608,7 +612,7 @@ class PersonnelDispatcher(ChannelNotifier):
                     area=current_location,
                     is_dirty=True,
                 )
-            if isinstance(current_location, models.Lab):
+            elif isinstance(current_location, models.Lab):
                 log_entry = models.LogEntry.objects.create(
                     exercise=cls.get_exercise(personnel),
                     category=models.LogEntry.CATEGORIES.PERSONNEL,
@@ -618,7 +622,16 @@ class PersonnelDispatcher(ChannelNotifier):
                 )
             if log_entry:
                 log_entry.personnel.add(personnel)
+                # print("Finalizing log entry")
+                # print(personnel)
+                # print(log_entry.personnel)
+                # print(log_entry.personnel.all())
+                # print("Settin dirty to False")
                 log_entry.set_dirty(False)
+                # print(log_entry.personnel.all())
+
+    #
+    # print("Dirty is false")
 
     @classmethod
     def delete_and_notify(cls, personnel, *args, **kwargs):
