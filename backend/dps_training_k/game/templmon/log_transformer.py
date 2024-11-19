@@ -28,23 +28,29 @@ def generate_timestamp(log_entry: le.LogEntry):
     return str(log_entry.timestamp.timestamp())
 
 
-def transform(log_entry: le.LogEntry):
+def transform(log_entry: le.LogEntry, personnel_list, material_list):
+    # print("Personnel List: ")
+    # print(personnel_list)
+    # print("Material List: ")
+    # print(material_list)
+    # print("deteriming log type")
     log_type = determine_log_type(log_entry)
+    # print("Generating timestamp")
     timestamp = generate_timestamp(log_entry)
     log_str = f"@{timestamp} "
 
     if log_type == MonpolyLogEntry.ASSIGNED_PERSONNEL:
-        print(f"field: {log_entry.personnel}")
-        print(f"Queryset: {log_entry.personnel.all()}")
-        print(f"Entry: {log_entry.personnel.all().first()}")
-        print(f"key: {log_entry.personnel.all().first().pk}")
-        personnel_id = log_entry.personnel.all().first().pk
+        # print(f"field: {log_entry.personnel}")
+        # print(f"Queryset: {log_entry.personnel.all()}")
+        # print(f"Entry: {log_entry.personnel.all().first()}")
+        # print(f"key: {log_entry.personnel.all().first().pk}")
+        personnel_id = personnel_list[0].pk
         patient_id = log_entry.patient_instance.pk
         log_str += f"assigned_personnel({personnel_id}, {patient_id})"
         # log_str += f"assigned_personnel(144, {patient_id})"
 
     elif log_type == MonpolyLogEntry.UNASSIGNED_PERSONNEL:
-        personnel_id = log_entry.personnel.all().first().pk
+        personnel_id = personnel_list[0].pk
         log_str += f"unassigned_personnel({personnel_id})"
         # log_str += f"unassigned_personnel(144)"
 

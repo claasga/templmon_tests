@@ -52,15 +52,20 @@ class LogRuleRunner:
         pass
 
     def receive_log_entry(self, log_entry):
+        personnel_list = list(log_entry.personnel.all())
+        # print("Personnel List in main thread: ")
+        # print(personnel_list)
+        material_list = list(log_entry.materials.all())
+        asyncio.run_coroutine_threadsafe(
+            self._receive_log_entry(log_entry, personnel_list, material_list), self.loop
+        )
 
-        asyncio.run_coroutine_threadsafe(self._receive_log_entry(log_entry), self.loop)
-
-    async def _receive_log_entry(self, log_entry):
+    async def _receive_log_entry(self, log_entry, personnel_list, material_list):
         print(f"Received log entry: {log_entry}")
         await self.monpoly_started_event.wait()  # Wait until monpoly is ready
         print("Monpoly is ready")
         try:
-            monpolified_log_entry = transform(log_entry)
+            monpolified_log_entry = transform(log_entry, personnel_list, material_list)
         except Exception as e:
             raise e
         print(f"Monpolified log entry: {monpolified_log_entry}")
