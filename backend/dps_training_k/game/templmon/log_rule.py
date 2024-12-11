@@ -42,33 +42,29 @@ class LogRule:
 class LogRuleRunner:
     # I need to start monpoly before subscribing to the log or store the log entries
     loop = asyncio.new_event_loop()
+    instances = []
 
     def __init__(self, exercise, log):
         self.log = log
         self.exercise = exercise
         self.monpoly_started_event = asyncio.Event()
+        self.finished_reading_monpoly = asyncio.Event()
+        LogRuleRunner.instances.append(
+            self
+        )  # ToDo: remove when log rules get created inside trainer consumer
 
     def __del__(self):
         pass
 
     def receive_log_entry(self, log_entry):
-        personnel_list = list(log_entry.personnel.all())
-        # print("Personnel List in main thread: ")
-        # print(personnel_list)
-        material_list = list(log_entry.materials.all())
+        transformed_log_entry = transform(log_entry)
         asyncio.run_coroutine_threadsafe(
-            self._receive_log_entry(log_entry, personnel_list, material_list), self.loop
+            self._write_log_entry(transformed_log_entry), self.loop
         )
 
-    async def _receive_log_entry(self, log_entry, personnel_list, material_list):
-        print(f"Received log entry: {log_entry}")
+    async def _write_log_entry(self, monpolified_log_entry: str):
+        print(f"Received log entry: {monpolified_log_entry}")
         await self.monpoly_started_event.wait()  # Wait until monpoly is ready
-        print("Monpoly is ready")
-        try:
-            monpolified_log_entry = transform(log_entry, personnel_list, material_list)
-        except Exception as e:
-            raise e
-        print(f"Monpolified log entry: {monpolified_log_entry}")
         if self.monpoly.stdin:
             try:
                 encoded = monpolified_log_entry.encode()
@@ -78,20 +74,17 @@ class LogRuleRunner:
                 raise e
         else:
             raise Exception("Monpoly is not running")
-        print("Log entry sent")
 
     async def read_output(self, process):
-        self.monpoly_started_event.set()
         while True:
             line = await process.stdout.readline()
             if not line:
                 print("process terminated")
+                self.finished_reading_monpoly.set()
                 break
             print(f"Received: {line.decode('utf-8')[:-1]}")
 
-    async def _launch_monpoly(
-        self, loop: asyncio.AbstractEventLoop, mfotl_path, sig_path, rewrite=True
-    ):
+    async def _launch_monpoly(self, mfotl_path, sig_path, rewrite=True):
         """Has to be launched in a separate thread"""
         self.monpoly = await asyncio.create_subprocess_exec(
             "monpoly",
@@ -109,6 +102,11 @@ class LogRuleRunner:
         asyncio.create_task(self.read_output(self.monpoly))
         self.monpoly_started_event.set()  # Signal that monpoly is ready
 
+    async def terminate_monpoly(self):
+        self.monpoly.stdin.close()
+        await self.finished_reading_monpoly.wait()
+        self.monpoly.terminate()
+
     def start_log_rule(self):
         def launch_listener_loop(loop: asyncio.AbstractEventLoop):
             asyncio.set_event_loop(loop)
@@ -122,7 +120,6 @@ class LogRuleRunner:
         sig_path = os.path.join(base_dir, "kdps.sig")
         asyncio.run_coroutine_threadsafe(
             self._launch_monpoly(
-                self.loop,
                 mfotl_path,
                 sig_path,
             ),
@@ -130,15 +127,5 @@ class LogRuleRunner:
         )
         self.log.subscribe_to_exercise(self.exercise, self, send_past_logs=True)
 
-        # startup extra asyncio_thread as loop
-        # asyncio.run(lauch_monpoly())
-        # event.wait()
-        # log.subscribe_to_exercise(exercise, self, send_past_logs=True)
-        #
-        # launch_monpoly()
-        #   monpoly = await asyncio.create_subprocess_exec()
-        #   listener_thread = loop.call_soon_threadsafe(asyncio.create_task, listener) oder eventuell
-        #
-        #
-        #
-        # atexitstuff"""
+    def stop_log_rule(self):
+        asyncio.run_coroutine_threadsafe(self.terminate_monpoly(), self.loop)

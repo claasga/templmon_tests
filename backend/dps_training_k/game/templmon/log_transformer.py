@@ -1,4 +1,7 @@
 import game.models.log_entry as le
+import datetime
+
+max_posix_timestamp = pow(2, 31) - 1
 
 
 class MonpolyLogEntry:
@@ -24,41 +27,33 @@ def determine_log_type(log_entry: le.LogEntry):
         return MonpolyLogEntry.UNKNOW_LOG_TYPE
 
 
+def trigger_event(posix_timestamp):
+    return f"@{posix_timestamp} trigger_event()"
+
+
 def generate_timestamp(log_entry: le.LogEntry):
     return str(log_entry.timestamp.timestamp())
 
 
-def transform(log_entry: le.LogEntry, personnel_list, material_list):
-    # print("Personnel List: ")
-    # print(personnel_list)
-    # print("Material List: ")
-    # print(material_list)
-    # print("deteriming log type")
+def transform(log_entry: le.LogEntry):
     log_type = determine_log_type(log_entry)
-    # print("Generating timestamp")
     timestamp = generate_timestamp(log_entry)
     log_str = f"@{timestamp} "
 
     if log_type == MonpolyLogEntry.ASSIGNED_PERSONNEL:
-        # print(f"field: {log_entry.personnel}")
-        # print(f"Queryset: {log_entry.personnel.all()}")
-        # print(f"Entry: {log_entry.personnel.all().first()}")
-        # print(f"key: {log_entry.personnel.all().first().pk}")
-        personnel_id = personnel_list[0].pk
+        personnel_id = log_entry.personnel.all().first().pk
         patient_id = log_entry.patient_instance.pk
         log_str += f"assigned_personnel({personnel_id}, {patient_id})"
-        # log_str += f"assigned_personnel(144, {patient_id})"
 
     elif log_type == MonpolyLogEntry.UNASSIGNED_PERSONNEL:
-        personnel_id = personnel_list[0].pk
+        personnel_id = log_entry.personnel.all().first().pk
         log_str += f"unassigned_personnel({personnel_id})"
-        # log_str += f"unassigned_personnel(144)"
 
     elif log_type == MonpolyLogEntry.PATIENT_ARRIVED:
         patient_id = log_entry.patient_instance.pk
         area_id = log_entry.area.pk
-        triage_display = log_entry.patient_instance.get_triage_display
-        injuries = log_entry.content["injuries"]
+        triage_display = log_entry.patient_instance.get_triage_display()
+        injuries = f'"{log_entry.content["injuries"]}"'
         log_str += (
             f"patient_arrived({patient_id}, {area_id}, {triage_display}, {injuries})"
         )

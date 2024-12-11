@@ -47,6 +47,9 @@ class Exercise(NonEventable, models.Model):
         Lab.objects.create(exercise=new_Exercise)
         return new_Exercise
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
     def start_exercise(self):
         from .patient_instance import PatientInstance
 
@@ -60,9 +63,9 @@ class Exercise(NonEventable, models.Model):
         # ToDo: Add logrulerunner for testing purposes
         from ..channel_notifications import LogEntryDispatcher
 
-        test_log_runner = LogRuleRunner(self, LogEntryDispatcher)
+        self.test_log_runner = LogRuleRunner(self, LogEntryDispatcher)
         # print("LogRuleRunner created")
-        test_log_runner.start_log_rule()
+        self.test_log_runner.start_log_rule()
         # print("LogRuleRunner started")
 
     def save(self, *args, **kwargs):
@@ -77,6 +80,9 @@ class Exercise(NonEventable, models.Model):
             LogEntry.set_empty_timestamps(self)
         elif self.state == self.StateTypes.FINISHED:
             ScheduledEvent.remove_events_of_exercise(self)
+            # for every instance of the LogRuleRunner, stop the log rule
+            for instance in LogRuleRunner.instances:
+                instance.stop_log_rule()
 
     def time_factor(self):
         # config currently is not being used, but could be implemented as follows:
