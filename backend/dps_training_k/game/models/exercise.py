@@ -6,6 +6,7 @@ from helpers.eventable import NonEventable
 from .lab import Lab
 from .scheduled_event import ScheduledEvent
 from .log_entry import LogEntry
+from ..templmon.log_rule import LogRule
 from ..templmon.log_rule import LogRuleRunner
 
 
@@ -63,7 +64,15 @@ class Exercise(NonEventable, models.Model):
         # ToDo: Add logrulerunner for testing purposes
         from ..channel_notifications import LogEntryDispatcher
 
-        self.test_log_runner = LogRuleRunner(self, LogEntryDispatcher)
+        test_rule_str = """    (personnel_count <- CNT personnel_id;patient_id
+                   (NOT unassigned_personnel(personnel_id))
+               SINCE[0,*]
+                   assigned_personnel(personnel_id, patient_id))
+        AND
+           (personnel_count >= 4)"""
+        test_rule = LogRule.create(test_rule_str, "test_rule")
+        self.test_log_runner = LogRuleRunner(self, LogEntryDispatcher, test_rule)
+        # self.test_log_runner = LogRuleRunner(self, LogEntryDispatcher)
         # print("LogRuleRunner created")
         self.test_log_runner.start_log_rule()
         # print("LogRuleRunner started")
