@@ -66,35 +66,58 @@ class PersonnelPrioritizationRule(LogRule):
 class PersonnelCheckRule(LogRule):
     @classmethod
     def generate(cls, operator=">=", personnel_count=4):
+        if operator not in [">=", "<", "="]:
+            raise ValueError("Invalid operator")
+        if operator == ">=" and personnel_count == 0:
+            raise ValueError(
+                "Pointless monitoring. All patient instances have a personnel count of 0. Please increase"
+            )
         import signature_mapping as sm
 
-        assigned_personnel = sm.assigned_personnel
-        unassigned_personnel = sm.unassigned_personnel
-        RuleProperty = sm.RuleProperty
-
-        assgined_personnel_index = assigned_personnel.types.index(
-            RuleProperty.PERSONNEL
-        )
-        assigned_patient_index = assigned_personnel.types.index(RuleProperty.PATIENT)
-        unassigned_personnel_index = unassigned_personnel.types.index(
-            RuleProperty.PERSONNEL
-        )
-        unassigned_personnel_variables = unassigned_personnel.default_names
-        personnel_variable_name = assigned_personnel.default_names[
-            assgined_personnel_index
-        ]
-        patient_variable_name = assigned_personnel.default_names[assigned_patient_index]
-        unassigned_personnel_variables[unassigned_personnel_index] = (
-            personnel_variable_name
-        )
-
-        resulting_string = f"""
-(personnel_count <- CNT {personnel_variable_name};{patient_variable_name} 
-            (NOT unassigned_personnel({",".join(unassigned_personnel_variables)}))
-        SINCE[0,*] 
-            assigned_personnel({",".join(assigned_personnel.default_names)}))
+        assigned_personnel = sm.AssignedPersonnel()
+        unassigned_personnel = sm.UnassignedPersonnel()
+        patient_arrived = sm.PatientArrived()
+        resulting_string = None
+        if operator == ">=":
+            resulting_string = f"""
+    (EXISTS {patient_arrived.bind([sm.RuleProperty.PATIENT.name])}. 
+        ONCE[0,*) {patient_arrived.mfotl()}) 
 AND
-    (personnel_count {operator} {personnel_count})
+        ((personnel_count <- CNT {sm.RuleProperty.PERSONNEL};{sm.RuleProperty.PATIENT} 
+                (NOT {unassigned_personnel.mfotl()}) 
+            SINCE[0,*)
+                {assigned_personnel.mfotl()})
+    AND 
+        personnel_count >= {personnel_count})
+"""
+        else:
+            assigned_personnel_2 = sm.AssignedPersonnel()
+            personnel_name = sm.RuleProperty.PERSONNEL.name + "2"
+            assigned_personnel_2.set_variable(
+                sm.RuleProperty.PERSONNEL.name, personnel_name
+            )
+            unassigned_personnel_2 = sm.UnassignedPersonnel()
+            unassigned_personnel_2.set_variable(
+                sm.RuleProperty.PERSONNEL.name, personnel_name
+            )
+            resulting_string = f"""
+    ((EXISTS {patient_arrived.bind([sm.RuleProperty.PATIENT.name])}. 
+        ONCE[0,*) {patient_arrived.mfotl()}) 
+    AND 
+            (NOT EXISTS {unassigned_personnel_2.bind()}. 
+                    ((NOT {unassigned_personnel_2.mfotl()}) 
+                SINCE[0,*) {assigned_personnel_2.mfotl()}))) 
+OR 
+    ((EXISTS {patient_arrived.bind([sm.RuleProperty.PATIENT.name])}. 
+            ONCE[0,*) {patient_arrived.mfotl()}) 
+        AND 
+            (EXISTS personnel_count. 
+                    ((personnel_count <- CNT {sm.RuleProperty.PERSONNEL};{sm.RuleProperty.PATIENT} 
+                            ((NOT {unassigned_personnel.mfotl()}) 
+                        SINCE[0,*) 
+                            {assigned_personnel.mfotl()})) 
+                AND 
+                    personnel_count {operator} {personnel_count})))
 """
         print(resulting_string)
 
@@ -315,4 +338,4 @@ class LogRuleRunner:
 #    (personnel_count >= 4)"""
 # test_rule = LogRule.create(test_rule_str, "test_rule")
 # log_rule_runner = LogRuleRunner(None, LogEntryDispatcher, test_rule)
-PersonnelCheckRule.generate()
+PersonnelCheckRule.generate(operator="<")
