@@ -5,3 +5,4 @@ from .action_instance_factory import *
 from .lab_factory import *
 from .personnel_factory import *
 from .material_instance_factory import *
+from .log_entry_factory import *

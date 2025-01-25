@@ -51,6 +51,7 @@ class TrainerConsumer(AbstractConsumer):
         ]
         self.exercise_frontend_id = None
         self.exercise = None
+        self.log_rules = []
         trainer_request_map = {
             self.TrainerIncomingMessageTypes.AREA_ADD: (self.handle_add_area,),
             self.TrainerIncomingMessageTypes.AREA_DELETE: (
@@ -181,6 +182,8 @@ class TrainerConsumer(AbstractConsumer):
 
     def handle_end_exercise(self, exercise):
         exercise.update_state(Exercise.StateTypes.FINISHED)
+        for rule in self.log_rules:
+            rule.stop_log_rule()
 
     def handle_start_exercise(self, exercise):
         exercise.start_exercise()

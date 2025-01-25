@@ -142,3 +142,23 @@ class TestUtilsMixin:
     def activate_relocating(self):
         self._deactivate_relocating_patch.stop()
         self._check_relocating_patch.stop()
+
+    def deactivate_action_check_updates(self):
+        self._deactivate_action_check_updates_patch = patch(
+            "game.channel_notifications.ChannelNotifier"
+        )
+        self._deactivate_action_check_updates = (
+            self._deactivate_action_check_updates_patch.start()
+        )
+
+    def activate_action_check_updates(self):
+        self._deactivate_action_check_updates_patch.stop()
+
+    def deactivate_dispatching(self, class_name: str):
+        self._deactivate_dispatching_patch = patch(
+            f"game.channel_notifications.{class_name}.dispatch_event"
+        )
+        self._deactivate_dispatching = self._deactivate_dispatching_patch.start()
+
+    def activate_dispatching(self):
+        self._deactivate_dispatching_patch.stop()

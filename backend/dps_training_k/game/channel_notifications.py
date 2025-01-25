@@ -336,12 +336,14 @@ class Observable:
             cls._exercise_subscribers[exercise].remove(subscriber)
 
     @classmethod
-    def _puplish_obj(cls, obj, exercise):
+    def _publish_obj(cls, obj, exercise):
+        print("Evaluating validity")
         if not obj.is_valid():
             return
 
         print("Publishing obj")
         if exercise in cls._exercise_subscribers:
+            print("Exercise in subscribers")
             for subscriber in cls._exercise_subscribers[exercise]:
                 subscriber.receive_log_entry(obj)
 
@@ -351,7 +353,7 @@ class LogEntryDispatcher(Observable, ChannelNotifier):
     @classmethod
     def save_and_notify(cls, obj, changes, save_origin, *args, **kwargs):
         super().save_and_notify(obj, changes, save_origin, *args, **kwargs)
-        cls._puplish_obj(obj, obj.exercise)
+        cls._publish_obj(obj, obj.exercise)
 
     @classmethod
     def get_group_name(cls, exercise):

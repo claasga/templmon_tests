@@ -17,7 +17,7 @@ class SavedExerciseFactory(factory.django.DjangoModelFactory):
 class ExerciseFactory(factory.django.DjangoModelFactory):
     class Meta:
         model = Exercise
-        django_get_or_create = ("config", "frontend_id", "state")
+        django_get_or_create = ("frontend_id",)
 
     config = factory.SubFactory(SavedExerciseFactory)
     frontend_id = "a" * settings.ID_GENERATOR.code_length
