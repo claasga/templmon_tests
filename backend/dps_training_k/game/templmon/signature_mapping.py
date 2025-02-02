@@ -10,17 +10,19 @@ class RuleProperty:
             self.type = type
 
         def __str__(self):
-            return self.name
+            # return self.name
+            return "RuleProperty: " + self.name
 
         def __iter__(self):
             return iter((self.name, self.type))
 
     LOCATION = NameType("location", MPT.string)
-    OLD_LOCATION = NameType(f"{LOCATION}_old", MPT.string)
-    NEW_LOCATION = NameType(f"{LOCATION}_new", MPT.string)
+    OLD_LOCATION = NameType(f"{LOCATION.name}_old", MPT.string)
+    NEW_LOCATION = NameType(f"{LOCATION.name}_new", MPT.string)
     PERSONNEL = NameType("personnel", MPT.string)
     PATIENT = NameType("patient", MPT.string)
     ACTION = NameType("action", MPT.string)
+    EXAMINATION = NameType("examination", MPT.string)
     RESULT = NameType("result", MPT.string)
     DEVICE = NameType("device", MPT.string)
     TRIAGE = NameType("triage", MPT.string)
@@ -32,7 +34,7 @@ class RuleProperty:
     PUPILLEN = NameType("pupils", MPT.string)
     PSYCHE = NameType("psyche", MPT.string)
     HAUT = NameType("skin", MPT.string)
-    ALIVENESS = NameType("aliveness", MPT.string)
+    DEAD = NameType("dead", MPT.string)
     UNKNOWN = NameType("unknown", MPT.string)
 
 
@@ -47,14 +49,36 @@ class LogType:
     def mfotl(self):
         return f'{self._MONPOLY_NAME}({",".join(self._variables.values())})'
 
-    def bind(self, exclusions=[]):
-        return ", ".join(
-            [var for var in self._variables.values() if var not in exclusions]
+    def bind(self, keys=[], include=True):
+        if not include:
+            keys = [var for var in self._variables.keys() if var not in keys]
+        return ", ".join([self.get_variable(var) for var in keys])
+
+    def compare_values_mfotl(self, key_values):
+        return " AND ".join(
+            [f"{self.get_variable(key)} = {value}" for key, value in key_values.items()]
         )
+
+    @classmethod
+    def bulk_create(cls, amount, matching_variables={}, start_id=1):
+        objects = [cls() for i in range(amount)]
+        for i in range(amount):
+            obj = objects[i]
+            for var in obj._variables:
+                if var in matching_variables:
+                    obj.set_variable(var, matching_variables[var])
+                else:
+                    obj.set_variable(var, f"{var}_{i + start_id}")
+        return objects
 
     @classmethod
     def monpoly_representation(cls):
         return f"{cls._MONPOLY_NAME}({', '.join([var.type for var in cls._BASE_VARIABLES])})"
+
+    def match(self, others, matching_variables):
+        for other in others:
+            for var in matching_variables:
+                other.set_variable(var, self.get_variable(var))
 
     def get_variable(self, key: str):
         if key in self._variables:
@@ -62,11 +86,7 @@ class LogType:
         raise KeyError(f"Variable '{key}' not found in {self.__class__.__name__}")
 
     def set_variable(self, key: str, value):
-        if value in self._variables.values():
-            raise ValueError(
-                f"Value '{value}' already exists in {self.__class__.__name__}"
-            )
-        elif key not in self._variables:
+        if key not in self._variables:
             raise KeyError(f"Variable '{key}' not found in {self.__class__.__name__}")
 
         self._variables[key] = value
@@ -87,7 +107,7 @@ class ChangedState(LogType):
         RuleProperty.PATIENT,
         RuleProperty.AIRWAY,
         RuleProperty.CIRCULATION,
-        RuleProperty.ALIVENESS,
+        RuleProperty.DEAD,
     ]
     _MONPOLY_NAME = "changed_state"
 
@@ -109,6 +129,39 @@ class PatientRelocated(LogType):
         RuleProperty.NEW_LOCATION,
     ]
     _MONPOLY_NAME = "patient_relocated"
+
+
+class ExaminationResult(LogType):
+    _BASE_VARIABLES = [
+        RuleProperty.PATIENT,
+        RuleProperty.EXAMINATION,
+        RuleProperty.RESULT,
+    ]
+    _MONPOLY_NAME = "examination_result"
+
+
+class ActionStarted(LogType):
+    _BASE_VARIABLES = [
+        RuleProperty.PATIENT,
+        RuleProperty.ACTION,
+    ]
+    _MONPOLY_NAME = "action_started"
+
+
+class ActionCanceled(LogType):
+    _BASE_VARIABLES = [
+        RuleProperty.PATIENT,
+        RuleProperty.ACTION,
+    ]
+    _MONPOLY_NAME = "action_canceled"
+
+
+class ActionFinished(LogType):
+    _BASE_VARIABLES = [
+        RuleProperty.PATIENT,
+        RuleProperty.ACTION,
+    ]
+    _MONPOLY_NAME = "action_finished"
 
 
 def generate_monpoly_signature(file_path):
@@ -144,4 +197,15 @@ if __name__ == "__main__":
     generate_monpoly_signature(
         os.path.join(os.path.dirname(__file__), "signature_test")
     )
-    print(assigned_personnel.bind(["patient", "aliveness"]))  # Output: airway, selected
+    print(assigned_personnel.bind(["patient", "dead"]))  # Output: airway, selected
+    bulk = ChangedState.bulk_create(
+        3, matching_variables={RuleProperty.PATIENT.name: "special_name"}
+    )
+    for e in bulk:
+        print(e.mfotl())
+    print(
+        assigned_personnel.compare_values_mfotl(
+            {RuleProperty.CIRCULATION.name: 1.7, RuleProperty.DEAD.name: "TRUE"}
+        )
+    )
+    print(assigned_personnel.compare_values_mfotl({RuleProperty.CIRCULATION.name: 1.7}))
