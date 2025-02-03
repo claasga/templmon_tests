@@ -5,7 +5,7 @@ import threading
 import subprocess
 
 # import log_transformer as lt
-import signature_mapping as sm
+from . import signature_mapping as sm
 
 
 class LogRule:
@@ -289,11 +289,11 @@ class SymptomCombinationRule(LogRule):
 
         RP = sm.RuleProperty
         patient_arrived = sm.PatientArrived()
-        changed_state, c_changed_state, vital_paramters_sub = None, None, None
+        changed_state, c_changed_state, vital_parameters_sub = None, None, None
 
         if vital_parameters:
             [changed_state, c_changed_state] = sm.ChangedState.bulk_create(2)
-            vital_paramters_sub = f"""{changed_state.mfotl()} AND {changed_state.compare_values_mfotl(vital_parameters)}"""
+            vital_parameters_sub = f"""{changed_state.mfotl()} AND {changed_state.compare_values_mfotl(vital_parameters)}"""
 
         examination_formulas, examination_results_base_subs, c_examination_formulas = (
             None,
@@ -334,6 +334,7 @@ class SymptomCombinationRule(LogRule):
         action_canceled = sm.ActionCanceled()
         action_started.match([action_canceled], [RP.PATIENT.name, RP.ACTION.name])
         recent_conditions = []
+        examination_results_subs = []
         if examination_results:
             examination_results_subs = [
                 f"""(NOT (EXISTS {examination_formulas[i].bind([RP.PATIENT], False)}. {examination_formulas[i].mfotl()})
@@ -346,18 +347,30 @@ class SymptomCombinationRule(LogRule):
             vital_parameters_sub = f"""(NOT EXISTS {c_changed_state.bind([RP.PATIENT.name], False)}. {c_changed_state.mfotl()}
             SINCE[0,*] 
                 {changed_state.mfotl()} AND {changed_state.compare_values_mfotl(vital_parameters)})"""
-            recent_conditions.append(vital_paramters_sub)
+            recent_conditions.append(vital_parameters_sub)
         unfinished_rule = f"""
         (EXISTS {patient_arrived.bind([RP.PATIENT.name], False)}. ONCE[0,*] {patient_arrived.mfotl()})
 AND
     {action_canceled.mfotl()}
 AND
         (NOT {action_started.mfotl()}
-    SINCE[0,120] # hier dauer der Aktion eintragen!
+    SINCE[0,{timeframe}] # hier dauer der Aktion eintragen!
             ({action_started.mfotl()} #Currently uses examination and breathing values of the action started timpoint. Might be unintented behaviour. Or not.
         AND
             {" AND ".join(recent_conditions)}))
 # struggles with overlapping actions of the same type. When canceled, it always asumes the most"""
+
+        NOW_versions = examination_results_base_subs + [
+            f"{changed_state.mfotl()} AND {changed_state.compare_values_mfotl(vital_parameters)}"
+        ]
+        SINCE_versions = examination_results_subs + [vital_parameters_sub]
+        NOW_SINCE_CONSTRUCTS = []
+        for i in range(len(NOW_versions)):
+            NOW_SINCE_CONSTRUCTS.append(
+                " AND ".join(
+                    NOW_versions[i] + SINCE_versions[:i] + SINCE_versions[i + 1 :]
+                )
+            )
 
         to_late_rule = f""" 
     (EXISTS {patient_arrived.bind([RP.PATIENT.name], False)}. ONCE[0,*] {patient_arrived.mfotl()})
@@ -367,22 +380,8 @@ AND
             (EXISTS new_results. patient_examination_result(patient_id, "selected_examination_id", new_results))
         OR
             (EXISTS {c_changed_state.bind([RP.PATIENT.name], False)}. {c_changed_state.mfotl()}))
-    SINCE[120,*] #hier andere struktur nötig, da diesmal die zeit relevant und nicht mit "*" als Obergrenze geschummelt werden kann
-                        ((patient_examination_result(patient_id, "selected_examination_id", results)
-                    AND
-                        results = "bad"
-            AND
-                    (NOT(EXISTS {c_changed_state.bind([RP.PATIENT.name], False)}. {c_changed_state.mfotl()})
-                SINCE[0,*] 
-                        ({vital_paramters_sub})))
-        OR
-                    (NOT(EXISTS re. patient_examination_result(patient_id, "selected_examination_id", re))
-                SINCE[0,*] 
-                        (patient_examination_result(patient_id, "selected_examination_id", results)
-                    AND
-                        results = "bad"))
-            AND
-                        {vital_paramters_sub}))"""
+    SINCE[{timeframe},*] #hier andere struktur nötig, da diesmal die zeit relevant und nicht mit "*" als Obergrenze geschummelt werden kann
+                        ({" OR ".join(NOW_SINCE_CONSTRUCTS)})"""
         wrong_order_rule = f"""
     ((EXISTS {patient_arrived.bind([RP.PATIENT.name], False)}. ONCE[0,*] {patient_arrived.mfotl()})
 AND
@@ -403,7 +402,7 @@ AND
             AND 
                 (EXISTS {c_action_started_2.bind([RP.PATIENT.name], False)}. {c_action_started_2.mfotl()}))
         SINCE[0,*]
-                {vital_paramters_sub}))"""
+                {vital_parameters_sub}))"""
 
         pass
 
@@ -624,8 +623,9 @@ class LogRuleRunner:
 #    (personnel_count >= 4)"""
 # test_rule = LogRule.create(test_rule_str, "test_rule")
 # log_rule_runner = LogRuleRunner(None, LogEntryDispatcher, test_rule)
-RP = sm.RuleProperty
-PersonnelCheckRule.generate(operator="<")
-PersonnelPrioritizationRule.generate(
-    RP.AIRWAY.name, ">", 4, 2, RP.CIRCULATION.name, "<", 4, 2
-)
+if __name__ == "main":
+    RP = sm.RuleProperty
+    PersonnelCheckRule.generate(operator="<")
+    PersonnelPrioritizationRule.generate(
+        RP.AIRWAY.name, ">", 4, 2, RP.CIRCULATION.name, "<", 4, 2
+    )

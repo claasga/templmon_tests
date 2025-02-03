@@ -7,6 +7,10 @@ from channels.layers import get_channel_layer
 import game.models as models  # needed to avoid circular imports
 import template.models as template
 
+import datetime
+import threading
+import time
+
 """
 This package is responsible to decide when to notify which consumers.
 This also implies that it should be as transparent as possible to the models it watches.
@@ -27,6 +31,7 @@ class ChannelEventTypes:
     RESOURCE_ASSIGNMENT_EVENT = "resource.assignment.event"
     RELOCATION_START_EVENT = "relocation.start.event"
     RELOCATION_END_EVENT = "relocation.end.event"
+    RULE_VIOLATION_EVENT = "rule.violation.event"
 
 
 class ChannelNotifier:
@@ -337,7 +342,7 @@ class Observable:
 
     @classmethod
     def _publish_obj(cls, obj, exercise):
-        print("Evaluating validity")
+        # print("Evaluating validity")
         if not obj.is_valid():
             return
 
@@ -376,6 +381,33 @@ class LogEntryDispatcher(Observable, ChannelNotifier):
             "log_entry_id": log_entry.id,
         }
         cls._notify_group(channel, event)
+
+
+class LogRuleDispatcher:
+    @classmethod
+    def get_group_name(cls, exercise):
+        return f"log_rules_{exercise.id}_log"
+
+    @classmethod
+    async def violation_found(cls, exercise, log_rule_violation):
+        channel = cls.get_group_name(exercise)
+        event = {
+            "type": ChannelEventTypes.RULE_VIOLATION_EVENT,
+            "log_entry_id": log_rule_violation,
+        }
+        await get_channel_layer().group_send(channel, event)
+
+    @classmethod
+    def start_periodic_violation_thread(cls, exercise):
+        def run_periodically():
+            while True:
+                current_time = datetime.datetime.now().strftime("%H:%M:%S")
+                log_rule_violation = f"log rule violation: {current_time}"
+                asyncio.run(cls.violation_found(exercise, log_rule_violation))
+                time.sleep(10)
+
+        thread = threading.Thread(target=run_periodically, daemon=True)
+        thread.start()
 
 
 class MaterialInstanceDispatcher(ChannelNotifier):
@@ -434,7 +466,6 @@ class MaterialInstanceDispatcher(ChannelNotifier):
                     is_dirty=True,
                 )
             if isinstance(current_location, models.Area):
-                message += f" zu {current_location.frontend_model_name()} {current_location.name}"
                 log_entry = models.LogEntry.objects.create(
                     exercise=cls.get_exercise(material),
                     category=category,

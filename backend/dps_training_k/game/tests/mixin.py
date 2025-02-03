@@ -162,3 +162,12 @@ class TestUtilsMixin:
 
     def activate_dispatching(self):
         self._deactivate_dispatching_patch.stop()
+
+    def deactivate_pretreatments(self):
+        self._deactivate_pretreatments_patch = patch(
+            "game.models.PatientInstance.apply_pretreatments"
+        )
+        self._deactivate_pretreatments = self._deactivate_pretreatments_patch.start()
+
+    def activate_pretreatments(self):
+        self._deactivate_pretreatments_patch.stop()

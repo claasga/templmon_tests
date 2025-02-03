@@ -93,7 +93,7 @@ class LogEntry(models.Model):
     def is_valid(self):
         if self.timestamp and self.local_id and not self.is_dirty:
             return True
-        print("not valid")
+        # print("not valid")
         return False
 
     def set_dirty(self, new_dirty):

@@ -1,14 +1,19 @@
 from django.test import TestCase
 from unittest.mock import patch
 from game.models import LogEntry, Exercise
-from .factories import ExerciseFactory
+from .factories import ExerciseFactory, PatientFactory
+from .mixin import TestUtilsMixin
 
 
-class TrainerLogTestCase(TestCase):
+class TrainerLogTestCase(TestUtilsMixin, TestCase):
     def setUp(self):
+        self.deactivate_pretreatments()
         self.exercise = ExerciseFactory()
         self.log_entry, _ = LogEntry.objects.get_or_create(
-            exercise=self.exercise, message="Test 1"
+            exercise=self.exercise,
+            category=LogEntry.CATEGORIES.PATIENT,
+            type=LogEntry.TYPES.ARRIVED,
+            patient_instance=PatientFactory(),
         )
 
     @patch("game.channel_notifications.LogEntryDispatcher._notify_log_update_event")
@@ -34,7 +39,10 @@ class TrainerLogTestCase(TestCase):
         self.assertEqual(_notify_log_update_event.call_count, log_entries.count())
 
         self.log_entry = LogEntry.objects.create(
-            exercise=self.exercise, message="Test 2"
+            exercise=self.exercise,
+            category=LogEntry.CATEGORIES.PATIENT,
+            type=LogEntry.TYPES.MOVED,
+            patient_instance=PatientFactory(),
         )
         self.assertNotEqual(self.log_entry.timestamp, None)
         self.assertEqual(self.log_entry.is_valid(), True)

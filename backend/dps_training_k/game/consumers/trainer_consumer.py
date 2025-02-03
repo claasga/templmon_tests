@@ -7,7 +7,11 @@ from game.models import Lab
 from template.constants import MaterialIDs
 from template.models import PatientInformation, Material
 from .abstract_consumer import AbstractConsumer
-from ..channel_notifications import ChannelNotifier, LogEntryDispatcher
+from ..channel_notifications import (
+    ChannelNotifier,
+    LogEntryDispatcher,
+    LogRuleDispatcher,
+)
 from ..serializers import LogEntrySerializer
 
 
@@ -179,6 +183,8 @@ class TrainerConsumer(AbstractConsumer):
         self._send_exercise(self.exercise)
         self.subscribe(ChannelNotifier.get_group_name(self.exercise))
         self.subscribe(LogEntryDispatcher.get_group_name(self.exercise))
+        self.subscribe(LogRuleDispatcher.get_group_name(self.exercise))
+        LogRuleDispatcher.start_periodic_violation_thread(self.exercise)
 
     def handle_end_exercise(self, exercise):
         exercise.update_state(Exercise.StateTypes.FINISHED)
@@ -413,3 +419,7 @@ class TrainerConsumer(AbstractConsumer):
             self.TrainerOutgoingMessageTypes.LOG_UPDATE,
             logEntries=[LogEntrySerializer(log_entry).data],
         )
+
+    def rule_violation_event(self, event):
+        print("Rule violation event")
+        print(event)
