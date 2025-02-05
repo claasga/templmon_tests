@@ -1,14 +1,16 @@
 import os
-import re
-import asyncio
-import threading
-import subprocess
-from collections import defaultdict
 
 if __name__ != "__main__":
     from . import signature_mapping as sm
+    from . import log_transformer as lt
 else:
     import signature_mapping as sm
+    import log_transformer as lt
+
+
+class ViolationType:
+    DURATIONAL = 0
+    SINGULAR = 1
 
 
 class LogRule:
@@ -18,20 +20,22 @@ class LogRule:
     RULE_FILENAME = "mfotl"
     DEFAULT_SIGNATURE = os.path.join(BASE_DIR, "kdps.sig")
 
-    def __init__(self, signature, templatefile):
+    def __init__(self, signature, rule_file_path, violation_type: ViolationType, name):
         self.signature = signature
-        self.templatefile = templatefile
-        self.log_transformer = "jibberish"  # lt.LogTransformer
+        self.rule_file_path = rule_file_path
+        self.log_transformer = lt.LogTransformer
+        self.violation_type = violation_type
+        self.name = name
 
     # def __del__(self):
-    #    os.remove(self.templatefile)
+    #    os.remove(self.rule_file_path)
 
     @classmethod
-    def create(cls, rule: str, name: str):
+    def create(cls, rule: str, name: str, violation_type: ViolationType):
         file_path = cls._generate_file_path(name)
         with open(file_path, "w") as f:
             f.write(rule)
-        return cls(cls.DEFAULT_SIGNATURE, file_path)
+        return cls(cls.DEFAULT_SIGNATURE, file_path, violation_type, name)
 
     @classmethod
     def generate(cls):
@@ -55,6 +59,7 @@ class PersonnelPrioritizationRule(LogRule):
     @classmethod
     def generate(
         cls,
+        name,
         vital_sign_p1,
         operator_p1,
         value_p1,
@@ -184,7 +189,9 @@ AND
                 personnel_count >= 2)
 """
         print(rule)
-        return cls.create(rule, "personnel_prioritization")
+        return cls.create(
+            rule, "personnel_prioritization", ViolationType.DURATIONAL, name
+        )
 
 
 class PersonnelCheckRule(LogRule):
@@ -241,7 +248,7 @@ OR
         return rule
 
     @classmethod
-    def generate(cls, operator=">=", personnel_count=4):
+    def generate(cls, name, operator=">=", personnel_count=4):
         if operator not in [">=", "<", "="]:
             raise ValueError("Invalid operator")
         if operator == ">=" and personnel_count == 0:
@@ -275,13 +282,14 @@ OR
                 assigned_personnel_2,
             )
 
-        return cls.create(rule, "personnel_check")
+        return cls.create(rule, "personnel_check", ViolationType.DURATIONAL, name)
 
 
 class SymptomCombinationRule(LogRule):
     @classmethod
     def generate(
         cls,
+        name,
         action,
         timeframe,
         vital_parameters: dict = None,
@@ -420,243 +428,22 @@ AND
                 ({" AND ".join(RECENT_EXAMINATIONS_CONSTRUCT + [RECENT_STATES_CONSTRUCT])})"""
 
         return [
-            cls.create(wrong_order_rule, "wrong_order"),
-            cls.create(to_late_rule, "to_late"),
-            cls.create(unfinished_rule, "unfinished"),
-        ]
-
-
-class InvalidFormulaError(ValueError):
-    pass
-
-
-class LogRuleRunner:
-    # I need to start monpoly before subscribing to the log or store the log entries
-    listening_loop = asyncio.new_event_loop()
-    sessions = defaultdict(list)
-
-    def __init__(
-        self,
-        exercise_frontend_id,
-        log,
-        log_rule: LogRule,
-    ):
-        self.valid = False
-        self.log = log
-        self.session_id = exercise_frontend_id
-        self.log_rule = log_rule
-        self.log_transformer = log_rule.log_transformer
-        self.monpoly_started_event = asyncio.Event()
-        self.finished_reading_monpoly = asyncio.Event()
-        LogRuleRunner.sessions[self.session_id].append(self)
-
-    def __del__(self):
-        pass
-
-    @classmethod
-    def create(cls, exercise, log, log_rule: LogRule):
-        log_rule_runner = cls(exercise, log, log_rule)
-        log_rule_runner.initialize_log_rule()
-        return log_rule_runner
-
-    @classmethod
-    def start_session(cls, session_id):
-        for log_rule_runner in cls.sessions[session_id]:
-            log_rule_runner.stop_log_rule()
-
-    @classmethod
-    def stop_session(cls, session_id):
-        for log_rule_runner in cls.sessions[session_id]:
-            log_rule_runner.start_log_rule()
-
-    def receive_log_entry(self, log_entry):
-        transformed_log_entry = self.log_transformer.transform(log_entry)
-        future = asyncio.run_coroutine_threadsafe(
-            self._write_log_entry(transformed_log_entry), self.listening_loop
-        )
-        future.result()
-
-    async def _write_log_entry(self, monpolified_log_entry: str):
-        print(f"Received log entry: {monpolified_log_entry}")
-        await self.monpoly_started_event.wait()  # Wait until monpoly is ready
-        if self.monpoly.stdin:
-            encoded = monpolified_log_entry.encode()
-            self.monpoly.stdin.write(encoded)
-            await self.monpoly.stdin.drain()
-        else:
-            raise Exception("Monpoly is not running")
-
-    async def read_output(self, process, free_variables):
-        def get_fullfilling_assignments(assignments_str: str):
-            assignments = []
-            i = 0
-            print("Start mapping assignments")
-            while i < len(assignments_str):
-                if assignments_str[i] == "(":
-                    j = i + 1
-                    is_inside_quotes = False
-                    while assignments_str[j] != ")" or is_inside_quotes:
-                        j += 1
-                    assignments.append(assignments_str[i + 1 : j])
-                    i = j
-                i += 1
-            print("Finished mapping assignments with " + str(assignments))
-            assignment_dict = {}
-            for assignment in assignments:
-                print(assignment)
-
-                i = 0
-                for free_variable in free_variables:
-                    if i >= len(assignment):
-                        raise Exception(
-                            "Assignment does not contain all free variables"
-                        )
-                    inside_string = False
-                    beginning_i = i
-                    while i < len(assignment) and (
-                        assignment[i] != "," or inside_string
-                    ):
-                        if assignment[i] == '"':
-                            inside_string = not inside_string
-                        i += 1
-                    assignment_dict[free_variable] = assignment[beginning_i:i]
-                    print(
-                        f"Free variable: {free_variable}, Value: {assignment_dict[free_variable]}"
-                    )
-                if i < len(assignment):
-                    raise Exception("Assignment contains more than the free variables")
-                print(assignment_dict)
-            return assignment_dict
-
-        while True:
-            line = await process.stdout.readline()
-            if not line:
-                print("process terminated")
-                self.finished_reading_monpoly.set()
-                break
-            decoded_line = line.decode("utf-8")
-            if decoded_line[0] != "@" or decoded_line[-3:-1] == "()":
-                continue
-            print("Received output:")
-            print(decoded_line)
-            decoded_line = decoded_line[1:]
-            parts = decoded_line.split(" (")
-            if len(parts) != 3:
-                raise Exception("Invalid output format")
-
-            timestamp = float(parts[0])
-            timepoint = int(re.search(r"\d+", parts[1]).group())
-            fullfilling_assignments = get_fullfilling_assignments(parts[2])
-            for fullfilling_assignment in fullfilling_assignments:
-                print(
-                    f"Processed output : {timestamp}, {timepoint}, {fullfilling_assignment}"
-                )
-
-    async def _launch_monpoly(self, mfotl_path, sig_path, rewrite, free_variables):
-        """Has to be launched in a separate thread"""
-        self.monpoly = await asyncio.create_subprocess_exec(
-            "monpoly",
-            "-sig",
-            sig_path,
-            "-formula",
-            mfotl_path,
-            "-verbose",
-            "" if rewrite else "-no_rw",
-            env=os.environ.copy(),  # Ensure the environment variables are passed
-            stdin=asyncio.subprocess.PIPE,  # Allow writing to stdin
-            stdout=asyncio.subprocess.PIPE,  # Capture stdout
-            stderr=asyncio.subprocess.PIPE,  # Optionally capture stderr
-        )
-        asyncio.create_task(self.read_output(self.monpoly, free_variables))
-        self.monpoly_started_event.set()  # Signal that monpoly is ready
-
-    async def terminate_monpoly(self):
-        self.monpoly.stdin.close()
-        await self.finished_reading_monpoly.wait()
-        self.monpoly.terminate()
-
-    def _extract_environment_variables(self, output: str):
-        free_variables_predecessor = "The sequence of free variables is: ("
-        start = output.find(free_variables_predecessor) + len(
-            free_variables_predecessor
-        )
-        end = output.find(")", start)
-        free_variables = output[start:end]
-        free_variables = free_variables.split(",")
-        print("Extracted environment variables:")
-        for free_variable in free_variables:
-            print(free_variable)
-        return free_variables
-
-    def _environment_infos(self):
-        success_message = "formula is monitorable."
-        output = subprocess.run(
-            [
-                "monpoly",
-                "-sig",
-                self.log_rule.signature,
-                "-formula",
-                self.log_rule.templatefile,
-                "-check",
-            ],
-            capture_output=True,
-            text=True,
-        )
-        if success_message in output.stdout:
-
-            return True, True, self._extract_environment_variables(output.stdout)
-        output = subprocess.run(
-            [
-                "monpoly",
-                "-sig",
-                self.log_rule.signature,
-                "-formula",
-                self.log_rule.templatefile,
-                "-no_rw",
-                "-check",
-            ],
-            capture_output=True,
-            text=True,
-        )
-        if success_message in output.stdout:
-            return True, False, self._extract_environment_variables(output.stdout)
-
-    def initialize_log_rule(self):
-        self.valid, self.rewrite_allowed, self.free_variables = (
-            self._environment_infos()
-        )
-        if not self.valid:
-            raise InvalidFormulaError("Invalid formula")
-        return self.free_variables
-
-    def start_log_rule(self):
-        def launch_listener_loop(loop: asyncio.AbstractEventLoop):
-            asyncio.set_event_loop(loop)
-            loop.run_forever()
-
-        if (not self.listening_loop) or (not self.listening_loop.is_running()):
-            threading.Thread(
-                target=launch_listener_loop, args=(self.listening_loop,)
-            ).start()
-
-        if not self.valid:
-            raise InvalidFormulaError("Invalid formula")
-        asyncio.run_coroutine_threadsafe(
-            self._launch_monpoly(
-                self.log_rule.templatefile,
-                self.log_rule.signature,
-                self.rewrite_allowed,
-                self.free_variables,
+            cls.create(
+                wrong_order_rule,
+                "wrong_order",
+                ViolationType.SINGULAR,
+                f"{name}_wrong_order",
             ),
-            self.listening_loop,
-        )
-        self.log.subscribe_to_exercise(self.session_id, self, send_past_logs=True)
-        print(
-            "self.log.subscribe_to_exercise(self.exercise, self, send_past_logs=True)"
-        )
-
-    def stop_log_rule(self):
-        asyncio.run_coroutine_threadsafe(self.terminate_monpoly(), self.listening_loop)
+            cls.create(
+                to_late_rule, "to_late", ViolationType.DURATIONAL, f"{name}_to_late"
+            ),
+            cls.create(
+                unfinished_rule,
+                "unfinished",
+                ViolationType.SINGULAR,
+                f"{name}_unfinished",
+            ),
+        ]
 
 
 # from ..channel_notifications import LogEntryDispatcher

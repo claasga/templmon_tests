@@ -32,7 +32,18 @@ class ChannelEventTypes:
     RESOURCE_ASSIGNMENT_EVENT = "resource.assignment.event"
     RELOCATION_START_EVENT = "relocation.start.event"
     RELOCATION_END_EVENT = "relocation.end.event"
-    RULE_VIOLATION_EVENT = "rule.violation.event"
+    SINGULAR_VIOLATION_EVENT = "singular.violation.event"
+    DURATIONAL_VIOLATION_START_EVENT = "durational.violation.start.event"
+    DURATIONAL_VIOLATION_END_EVENT = "durational.violation.end.event"
+
+
+def _notify_group(group_channel_name, event):
+    """
+    Handled internally by the channels' dispatcher. Will try to call a method with event.type as name at the receiver; "." are replaced by "_".
+    For more info look into:
+    https://channels.readthedocs.io/en/stable/topics/channel_layers.html?highlight=periods#what-to-send-over-the-channel-layer
+    """
+    async_to_sync(get_channel_layer().group_send)(group_channel_name, event)
 
 
 class ChannelNotifier:
@@ -55,15 +66,6 @@ class ChannelNotifier:
         raise NotImplementedError(
             "Method delete_and_notify must be implemented by subclass"
         )
-
-    @classmethod
-    def _notify_group(cls, group_channel_name, event):
-        """
-        Handled internally by the channels' dispatcher. Will try to call a method with event.type as name at the receiver; "." are replaced by "_".
-        For more info look into:
-        https://channels.readthedocs.io/en/stable/topics/channel_layers.html?highlight=periods#what-to-send-over-the-channel-layer
-        """
-        async_to_sync(get_channel_layer().group_send)(group_channel_name, event)
 
     @classmethod
     def get_exercise(cls, obj):
@@ -94,13 +96,13 @@ class ChannelNotifier:
             "type": ChannelEventTypes.EXERCISE_UPDATE,
             "exercise_pk": exercise.id,
         }
-        cls._notify_group(channel, event)
+        _notify_group(channel, event)
 
     @classmethod
     def _notify_action_check_update(cls, exercise):
         channel = cls.get_live_group_name(exercise)
         event = {"type": ChannelEventTypes.ACTION_CHECK_CHANGED_EVENT}
-        cls._notify_group(channel, event)
+        _notify_group(channel, event)
 
     @classmethod
     def type_to_notifier(cls):
@@ -181,7 +183,7 @@ class ActionInstanceDispatcher(ChannelNotifier):
             "type": event_type,
             "action_instance_id": applied_action.id if applied_action else None,
         }
-        cls._notify_group(channel, event)
+        _notify_group(channel, event)
 
     @classmethod
     def create_trainer_log(cls, applied_action, changes, is_updated):
@@ -309,16 +311,16 @@ class ExerciseDispatcher(ChannelNotifier):
     def _notify_exercise_start_event(cls, exercise):
         channel = cls.get_group_name(exercise)
         event = {"type": ChannelEventTypes.EXERCISE_START_EVENT}
-        cls._notify_group(channel, event)
+        _notify_group(channel, event)
 
         event = {"type": ChannelEventTypes.RESOURCE_ASSIGNMENT_EVENT}
-        cls._notify_group(channel, event)
+        _notify_group(channel, event)
 
     @classmethod
     def _notify_exercise_end_event(cls, exercise):
         channel = cls.get_group_name(exercise)
         event = {"type": ChannelEventTypes.EXERCISE_END_EVENT}
-        cls._notify_group(channel, event)
+        _notify_group(channel, event)
 
 
 class Observable:
@@ -380,34 +382,7 @@ class LogEntryDispatcher(Observable, ChannelNotifier):
             "type": ChannelEventTypes.LOG_UPDATE_EVENT,
             "log_entry_id": log_entry.id,
         }
-        cls._notify_group(channel, event)
-
-
-class LogRuleDispatcher:
-    @classmethod
-    def get_group_name(cls, exercise):
-        return f"log_rules_{exercise.id}_log"
-
-    @classmethod
-    async def violation_found(cls, exercise, log_rule_violation):
-        channel = cls.get_group_name(exercise)
-        event = {
-            "type": ChannelEventTypes.RULE_VIOLATION_EVENT,
-            "log_entry_id": log_rule_violation,
-        }
-        await get_channel_layer().group_send(channel, event)
-
-    @classmethod
-    def start_periodic_violation_thread(cls, exercise):
-        def run_periodically():
-            while True:
-                current_time = datetime.datetime.now().strftime("%H:%M:%S")
-                log_rule_violation = f"log rule violation: {current_time}"
-                asyncio.run(cls.violation_found(exercise, log_rule_violation))
-                time.sleep(10)
-
-        thread = threading.Thread(target=run_periodically, daemon=True)
-        thread.start()
+        _notify_group(channel, event)
 
 
 class MaterialInstanceDispatcher(ChannelNotifier):
@@ -422,7 +397,7 @@ class MaterialInstanceDispatcher(ChannelNotifier):
         if changes_set & assignment_changes or not changes:
             channel = cls.get_group_name(cls.get_exercise(material))
             event = {"type": ChannelEventTypes.RESOURCE_ASSIGNMENT_EVENT}
-            cls._notify_group(channel, event)
+            _notify_group(channel, event)
 
     @classmethod
     def create_trainer_log(cls, material, changes, is_updated):
@@ -567,7 +542,7 @@ class PatientInstanceDispatcher(ChannelNotifier):
             "type": ChannelEventTypes.STATE_CHANGE_EVENT,
             "patient_instance_pk": patient_instance.id,
         }
-        cls._notify_group(channel, event)
+        _notify_group(channel, event)
 
     @classmethod
     def _notify_patient_move(cls, patient_instance):
@@ -575,7 +550,7 @@ class PatientInstanceDispatcher(ChannelNotifier):
         event = {
             "type": ChannelEventTypes.RESOURCE_ASSIGNMENT_EVENT,
         }
-        cls._notify_group(channel, event)
+        _notify_group(channel, event)
 
     @classmethod
     def delete_and_notify(cls, patient, *args, **kwargs):
@@ -597,7 +572,7 @@ class PersonnelDispatcher(ChannelNotifier):
         if changes_set & cls.assignment_changes or not changes:
             channel = cls.get_group_name(cls.get_exercise(personnel))
             event = {"type": ChannelEventTypes.RESOURCE_ASSIGNMENT_EVENT}
-            cls._notify_group(channel, event)
+            _notify_group(channel, event)
 
     @classmethod
     def create_trainer_log(cls, personnel, changes, is_updated):
@@ -681,3 +656,69 @@ class LabDispatcher(ChannelNotifier):
     @classmethod
     def get_exercise(cls, lab):
         return lab.exercise
+
+
+class ViolationDispatcher:
+    @classmethod
+    def get_group_name(cls, session_id):
+        return f"log_rules_{session_id}_log"
+
+    @classmethod
+    async def violation_found(cls, exercise, log_rule_violation):
+        channel = cls.get_group_name(exercise)
+        event = {
+            "type": ChannelEventTypes.RULE_VIOLATION_EVENT,
+            "log_entry_id": log_rule_violation,
+        }
+        _notify_group(channel, event)
+
+    @classmethod
+    def dispatch_durational_violation_started(
+        cls, session_id, rule_name, violation_assignment, start_stamp, start_point
+    ):
+        channel = cls.get_group_name(session_id)
+        event = {
+            "type": ChannelEventTypes.DURATIONAL_VIOLATION_START_EVENT,
+            "rule_name": rule_name,
+            "violation_assignment": violation_assignment,
+            "start_stamp": start_stamp,
+            "start_point": start_point,
+        }
+        _notify_group(channel, event)
+
+    @classmethod
+    def dispatch_durational_violation_finished(
+        cls,
+        session_id,
+        rule_name,
+        violation_assignment,
+        start_stamp,
+        start_point,
+        past_end_stamp,
+        past_end_point,
+    ):
+        channel = cls.get_group_name(session_id)
+        event = {
+            "type": ChannelEventTypes.DURATIONAL_VIOLATION_START_EVENT,
+            "rule_name": rule_name,
+            "violation_assignment": violation_assignment,
+            "start_stamp": start_stamp,
+            "start_point": start_point,
+            "past_end_stamp": past_end_stamp,
+            "past_end_point": past_end_point,
+        }
+        _notify_group(channel, event)
+
+    @classmethod
+    def dispatch_singular_violation(
+        cls, session_id, rule_name, violation_assignment, time_stamp, time_point
+    ):
+        channel = cls.get_group_name(session_id)
+        event = {
+            "type": ChannelEventTypes.DURATIONAL_VIOLATION_START_EVENT,
+            "rule_name": rule_name,
+            "violation_assignment": violation_assignment,
+            "time_stamp": time_stamp,
+            "time_point": time_point,
+        }
+        _notify_group(channel, event)

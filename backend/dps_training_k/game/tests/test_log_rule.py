@@ -1,6 +1,6 @@
 from django.test import TestCase
 from ..channel_notifications import LogEntryDispatcher
-from ..templmon import LogRule, LogRuleRunner, LogTransformer
+from ..templmon import LogRule, RuleRunner, LogTransformer
 from .factories import LogEntryFactoryPersonnelAssigned
 from .factories import PersonnelFactory, PatientFactory, ExerciseFactory
 from .mixin import TestUtilsMixin
@@ -26,7 +26,7 @@ AND
 
         test_rule = LogRule.create(test_rule_str, "test_rule")
         exercise = ExerciseFactory()
-        log_rule_runner = LogRuleRunner(exercise, LogEntryDispatcher, test_rule)
+        log_rule_runner = RuleRunner(exercise, LogEntryDispatcher, test_rule)
 
         patient = PatientFactory()
         exercise = patient.exercise
@@ -34,7 +34,7 @@ AND
         # self.assertTrue(personnel.try_moving_to(patient)[0])
 
         personnel = PersonnelFactory(patient_instance=patient)
-        log_rule_runner.start_log_rule()
+        log_rule_runner.start()
         log_entry = LogEntryFactoryPersonnelAssigned(
             patient_instance=patient, personnel=[personnel]
         )

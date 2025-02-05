@@ -1,67 +1,56 @@
 import re
 import asyncio
 
-free_variables = ["personnel_id", "patient_id"]
 
-
-class ViolationDispatcher:
-    @classmethod
-    def dispatch_violation_started(cls, violation_assignment, start_stamp, start_point):
-        print(f"Durational Violation started at {start_stamp}: {violation_assignment}")
-
-    @classmethod
-    def dispatch_violation_finished(
-        cls,
-        violation_assignment,
-        start_stamp,
-        start_point,
-        past_end_stamp,
-        past_end_point,
-    ):
-        print(
-            f"Durational Violation: {violation_assignment} from {start_stamp} till {past_end_stamp}"
-        )
-
-    @classmethod
-    def dispatch_singular_violation(cls, violation_assignment, time_stamp, time_point):
-        print(f"Singular Violation at {time_stamp}: {violation_assignment}")
-
-
-class OutputReceiver:
-    def __init__(self, keys, sender):
-        self.keys = keys
-        self.sender = sender
+class ViolationTracker:
+    def __init__(self, keys, violation_listener, session_id, name):
+        self._keys = keys
+        self._violation_listener = violation_listener
+        self._session_id = session_id
+        self._name = name
 
     def update_violations(self, timestamp, timepoint, violations: list[dict]):
         pass
 
     def get_format(self):
-        return self.keys
+        return self._keys
 
 
-class SingularViolationReceiver(OutputReceiver):
+class SingularViolationTracker(ViolationTracker):
     def update_violations(self, timestamp, timepoint, violations: list[dict]):
         for violation in violations:
-            self.sender.dispatch_singular_violation(violation, timestamp, timepoint)
+            self._violation_listener.dispatch_singular_violation(
+                self._session_id,
+                self._name,
+                dict(zip(self._keys, violation)),
+                timestamp,
+                timepoint,
+            )
 
 
-class DurationalViolationReceiver(OutputReceiver):
-    def __init__(self, keys, sender):
-        super().__init__(keys, sender)
+class DurationalViolationTracker(ViolationTracker):
+    def __init__(self, keys, violation_listener, session_id, name):
+        super().__init__(keys, violation_listener, session_id, name)
         self.current_unfinished_violations = {}
 
     def _add_violations(self, timestamp, timepoint, violations):
         for violation in violations:
             self.current_unfinished_violations[violation] = (timestamp, timepoint)
-            self.sender.dispatch_violation_started(
-                dict(zip(self.keys, violation)), timestamp, timepoint
+            self._violation_listener.dispatch_violation_started(
+                self._session_id,
+                self._name,
+                dict(zip(self._keys, violation)),
+                timestamp,
+                timepoint,
             )
 
     def _remove_violations(self, timestamp, timepoint, violations):
         for violation in violations:
             start_stamp, start_point = self.current_unfinished_violations.pop(violation)
-            self.sender.dispatch_violation_finished(
-                dict(zip(self.keys, violation)),
+            self._violation_listener.dispatch_violation_finished(
+                self._session_id,
+                self._name,
+                dict(zip(self._keys, violation)),
                 start_stamp,
                 start_point,
                 timestamp,
@@ -97,14 +86,14 @@ class DurationalViolationReceiver(OutputReceiver):
 
 
 class OutputParser:
-    def __init__(self, process, output_receiver: OutputReceiver):
+    def __init__(self, process, output_receiver: ViolationTracker):
         self.process = process
         self.output_receiver = output_receiver
         self.matches_seperator = " ("
         self.value_seperator = ", "
         self.finished_reading_process = asyncio.Event()
 
-    async def get_output(self):
+    async def read_output(self):
         def get_fullfilling_assignments(assignments_str: str):
             assignments = []
             i = 0
@@ -259,18 +248,18 @@ class OutputParser:
 #             )
 
 
-async def main():
-    await get_output(
-        open(
-            "/home/claas/Desktop/BP/dps.training_k/backend/dps_training_k/game/templmon/proto.txt",
-            "r",
-        ),
-        DurationalViolationReceiver(free_variables, ViolationDispatcher),
-    )
-    print("Finished")
-
-
-asyncio.run(main())
+# async def main():
+#    await get_output(
+#        open(
+#            "/home/claas/Desktop/BP/dps.training_k/backend/dps_training_k/game/templmon/proto.txt",
+#            "r",
+#        ),
+#        DurationalViolationReceiver(free_variables, ViolationDispatcher),
+#    )
+#    print("Finished")
+#
+#
+# asyncio.run(main())
 # get_output(
 #    open(
 #        "/home/claas/Desktop/BP/dps.training_k/backend/dps_training_k/game/templmon/proto.txt",

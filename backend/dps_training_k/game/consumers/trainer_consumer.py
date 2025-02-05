@@ -10,9 +10,11 @@ from .abstract_consumer import AbstractConsumer
 from ..channel_notifications import (
     ChannelNotifier,
     LogEntryDispatcher,
-    LogRuleDispatcher,
+    ViolationDispatcher,
 )
 from ..serializers import LogEntrySerializer
+from ..templmon.rule_generators import SymptomCombinationRule
+from ..templmon.rule_runner import RuleRunner, InvalidFormulaError
 
 
 class TrainerConsumer(AbstractConsumer):
@@ -55,7 +57,6 @@ class TrainerConsumer(AbstractConsumer):
         ]
         self.exercise_frontend_id = None
         self.exercise = None
-        self.log_rules = []
         trainer_request_map = {
             self.TrainerIncomingMessageTypes.AREA_ADD: (self.handle_add_area,),
             self.TrainerIncomingMessageTypes.AREA_DELETE: (
@@ -151,6 +152,15 @@ class TrainerConsumer(AbstractConsumer):
     def handle_add_area(self, exercise):
         Area.create_area(name="Bereich", exercise=exercise, isPaused=False)
 
+    def handle_add_rule(self, exercise, type, name, content):
+        try:
+            if type == "symptom-combination":
+                rules = SymptomCombinationRule.generate(name, **content)
+                for rule in rules:
+                    RuleRunner(exercise.frontend_id, LogEntryDispatcher, rule, name)
+        except InvalidFormulaError as e:
+            self.send_failure(str(e))
+
     def handle_delete_area(self, _, areaId):
         try:
             area = Area.objects.get(id=areaId)
@@ -183,8 +193,14 @@ class TrainerConsumer(AbstractConsumer):
         self._send_exercise(self.exercise)
         self.subscribe(ChannelNotifier.get_group_name(self.exercise))
         self.subscribe(LogEntryDispatcher.get_group_name(self.exercise))
-        self.subscribe(LogRuleDispatcher.get_group_name(self.exercise))
-        LogRuleDispatcher.start_periodic_violation_thread(self.exercise)
+        self.subscribe(ViolationDispatcher.get_group_name(self.exercise.frontend_id))
+        content = {
+            "action": "selected_action_id",
+            "timeframe": 120,
+            "vital_parameters": {"circulation": 10.0},
+            "examination_results": {"selected_examination_id": "bad"},
+        }
+        self.handle_add_log_rule(exercise, "symptom-combination", "test_rule", content)
 
     def handle_end_exercise(self, exercise):
         exercise.update_state(Exercise.StateTypes.FINISHED)
@@ -420,6 +436,14 @@ class TrainerConsumer(AbstractConsumer):
             logEntries=[LogEntrySerializer(log_entry).data],
         )
 
-    def rule_violation_event(self, event):
-        print("Rule violation event")
+    def singular_violation_event(self, event):
+        print("Singular violation event")
+        print(event)
+
+    def durational_ciolation_start_event(self, event):
+        print("Durational violation start event")
+        print(event)
+
+    def durational_violation_end_event(self, event):
+        print("Durational violation end event")
         print(event)

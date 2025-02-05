@@ -6,8 +6,8 @@ from helpers.eventable import NonEventable
 from .lab import Lab
 from .scheduled_event import ScheduledEvent
 from .log_entry import LogEntry
-from ..templmon.log_rule import LogRule
-from ..templmon.log_rule import LogRuleRunner
+from ..templmon.rule_runner import LogRule
+from ..templmon.rule_runner import RuleRunner
 
 
 class Exercise(NonEventable, models.Model):
@@ -61,21 +61,6 @@ class Exercise(NonEventable, models.Model):
         self.update_state(Exercise.StateTypes.RUNNING)
         for patient in owned_patients:
             patient.apply_pretreatments()
-        # ToDo: Add logrulerunner for testing purposes
-        from ..channel_notifications import LogEntryDispatcher
-
-        test_rule_str = """    (personnel_count <- CNT personnel_id;patient_id
-                   (NOT unassigned_personnel(personnel_id))
-               SINCE[0,*]
-                   assigned_personnel(personnel_id, patient_id))
-        AND
-           (personnel_count >= 4)"""
-        test_rule = LogRule.create(test_rule_str, "test_rule")
-        self.test_log_runner = LogRuleRunner(self, LogEntryDispatcher, test_rule)
-        # self.test_log_runner = LogRuleRunner(self, LogEntryDispatcher)
-        # print("LogRuleRunner created")
-        self.test_log_runner.start_log_rule()
-        # print("LogRuleRunner started")
 
     def save(self, *args, **kwargs):
         changes = kwargs.get("update_fields", None)
@@ -87,12 +72,10 @@ class Exercise(NonEventable, models.Model):
         self.save(update_fields=["state"])
         if not self.is_running_state(old_state) and self.is_running_state(state):
             LogEntry.set_empty_timestamps(self)
-            LogRuleRunner.stop_session(self.frontend_id)
+            RuleRunner.start_session(self.frontend_id)
         elif self.state == self.StateTypes.FINISHED:
             ScheduledEvent.remove_events_of_exercise(self)
-            LogRuleRunner.start_session(self.frontend_id)
-            for instance in LogRuleRunner.sessions:
-                instance.stop_log_rule()
+            RuleRunner.stop_session(self.frontend_id)
 
     def time_factor(self):
         # config currently is not being used, but could be implemented as follows:
