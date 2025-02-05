@@ -3,9 +3,12 @@ import re
 import asyncio
 import threading
 import subprocess
+from collections import defaultdict
 
-# import log_transformer as lt
-from . import signature_mapping as sm
+if __name__ != "__main__":
+    from . import signature_mapping as sm
+else:
+    import signature_mapping as sm
 
 
 class LogRule:
@@ -18,7 +21,7 @@ class LogRule:
     def __init__(self, signature, templatefile):
         self.signature = signature
         self.templatefile = templatefile
-        self.log_transformer = "jibbersih"  # lt.LogTransformer
+        self.log_transformer = "jibberish"  # lt.LogTransformer
 
     # def __del__(self):
     #    os.remove(self.templatefile)
@@ -180,8 +183,8 @@ AND
             AND 
                 personnel_count >= 2)
 """
-        cls.create(rule, "personnel_prioritization")
         print(rule)
+        return cls.create(rule, "personnel_prioritization")
 
 
 class PersonnelCheckRule(LogRule):
@@ -294,6 +297,7 @@ class SymptomCombinationRule(LogRule):
         if vital_parameters:
             [changed_state, c_changed_state] = sm.ChangedState.bulk_create(2)
             vital_parameters_sub = f"""{changed_state.mfotl()} AND {changed_state.compare_values_mfotl(vital_parameters)}"""
+            patient_arrived.match([changed_state, c_changed_state], [RP.PATIENT.name])
 
         examination_formulas, examination_results_base_subs, c_examination_formulas = (
             None,
@@ -304,19 +308,19 @@ class SymptomCombinationRule(LogRule):
             examination_formulas = sm.ExaminationResult.bulk_create(
                 len(examination_results)
             )
-            examination_formulas[0].match(examination_formulas[1:], [RP.PATIENT.name])
+            patient_arrived.match(examination_formulas, [RP.PATIENT.name])
             for i, key in enumerate(examination_results.keys()):
                 examination_formulas[i].set_variable(RP.EXAMINATION.name, f'"{key}"')
             examination_results_base_subs = [
-                f"{examination_formulas[i].mfotl()} AND {examination_formulas[i].compare_values_mfotl(dict(list(examination_results.items())[i]))}"
-                for i in range(len(examination_results))
+                f"{form.mfotl()}{(' AND ' + cmp) if (cmp := form.compare_values_mfotl({RP.EXAMINATION.name: value})) else ''}"
+                for form, (key, value) in zip(
+                    examination_formulas, examination_results.items()
+                )
             ]
             c_examination_formulas = sm.ExaminationResult.bulk_create(
-                len(examination_results)
+                len(examination_results), start_id=len(examination_results) + 1
             )
-            c_examination_formulas[0].match(
-                c_examination_formulas[1:], [RP.PATIENT.name]
-            )
+            patient_arrived.match(c_examination_formulas, [RP.PATIENT.name])
             for i in range(len(examination_formulas)):
                 c_examination_formulas[i].set_variable(
                     RP.EXAMINATION.name,
@@ -324,10 +328,11 @@ class SymptomCombinationRule(LogRule):
                 )
 
         action_started, action_started_2, c_action_started, c_action_started_2 = (
-            sm.ActionStarted.bulk_create(3)
+            sm.ActionStarted.bulk_create(4)
         )
-        action_started.match(
-            [action_started_2, c_action_started, c_action_started_2], [RP.PATIENT.name]
+        patient_arrived.match(
+            [action_started, action_started_2, c_action_started, c_action_started_2],
+            [RP.PATIENT.name],
         )
         action_started.set_variable(RP.ACTION.name, f'"{action}"')
 
@@ -337,7 +342,7 @@ class SymptomCombinationRule(LogRule):
         examination_results_subs = []
         if examination_results:
             examination_results_subs = [
-                f"""(NOT (EXISTS {examination_formulas[i].bind([RP.PATIENT], False)}. {examination_formulas[i].mfotl()})
+                f"""(NOT (EXISTS {c_examination_formulas[i].bind([RP.PATIENT.name], False)}. {c_examination_formulas[i].mfotl()})
             SINCE[0,*]
                    {subs})"""
                 for i, subs in enumerate(examination_results_base_subs)
@@ -366,87 +371,118 @@ AND
         SINCE_versions = examination_results_subs + [vital_parameters_sub]
         NOW_SINCE_CONSTRUCTS = []
         for i in range(len(NOW_versions)):
-            NOW_SINCE_CONSTRUCTS.append(
-                " AND ".join(
-                    NOW_versions[i] + SINCE_versions[:i] + SINCE_versions[i + 1 :]
-                )
+            conditions = (
+                [NOW_versions[i]] + SINCE_versions[:i] + SINCE_versions[i + 1 :]
             )
-
+            NOW_SINCE_CONSTRUCTS.append(" AND ".join(conditions))
+        CONDITIONS_CONSTRUCTS = [
+            action_started.mfotl(),
+            f"(EXISTS {c_changed_state.bind([RP.PATIENT.name], False)}. {c_changed_state.mfotl()})",
+        ]
+        for form in c_examination_formulas:
+            CONDITIONS_CONSTRUCTS.append(
+                f"EXISTS {form.bind([RP.PATIENT.name, RP.EXAMINATION.name], False)}. {form.mfotl()}"
+            )
         to_late_rule = f""" 
     (EXISTS {patient_arrived.bind([RP.PATIENT.name], False)}. ONCE[0,*] {patient_arrived.mfotl()})
 AND    
-            (NOT ({action_started.mfotl()}
-        OR
-            (EXISTS new_results. patient_examination_result(patient_id, "selected_examination_id", new_results))
-        OR
-            (EXISTS {c_changed_state.bind([RP.PATIENT.name], False)}. {c_changed_state.mfotl()}))
+            (NOT ({" OR ".join(f"({cc})" for cc in CONDITIONS_CONSTRUCTS)}))
     SINCE[{timeframe},*] #hier andere struktur nötig, da diesmal die zeit relevant und nicht mit "*" als Obergrenze geschummelt werden kann
-                        ({" OR ".join(NOW_SINCE_CONSTRUCTS)})"""
+                        ({" OR ".join([f"({nsc})" for nsc in NOW_SINCE_CONSTRUCTS])})"""
+
+        RECENT_EXAMINATIONS_CONSTRUCT = [
+            f"""((NOT ((EXISTS {c_form.bind([RP.PATIENT.name], False)}. {c_form.mfotl()})
+            OR
+                (EXISTS {c_action_started.bind([RP.PATIENT.name], False)}. {c_action_started.mfotl()})))
+        SINCE[0,*]
+                {form.mfotl()}{' AND ' + cmp if (cmp:=form.compare_values_mfotl({RP.RESULT.name: value})) else ''})"""
+            for form, c_form, value in list(
+                zip(
+                    examination_formulas,
+                    c_examination_formulas,
+                    examination_results.values(),
+                )
+            )
+        ]
+        RECENT_STATES_CONSTRUCT = f"""(NOT ((EXISTS {c_changed_state.bind([RP.PATIENT.name], False)}. {c_changed_state.mfotl()})
+            AND 
+                (EXISTS {c_action_started_2.bind([RP.PATIENT.name], False)}. {c_action_started_2.mfotl()}))
+        SINCE[0,*]
+                ({changed_state.mfotl()} AND {changed_state.compare_values_mfotl(vital_parameters)}))"""
         wrong_order_rule = f"""
     ((EXISTS {patient_arrived.bind([RP.PATIENT.name], False)}. ONCE[0,*] {patient_arrived.mfotl()})
 AND
         {action_started_2.mfotl()}
     AND
-        NOT {action_started_2.compare_values_mfotl({RP.ACTION.name: f'"{action}"'})})
+        NOT {action_started_2.compare_values_mfotl({RP.ACTION.name: action})})
 AND
     PREV
-                (((NOT ((EXISTS new_results. patient_examination_result(patient_id, "selected_examination_id", new_results))
-            OR
-                (EXISTS {c_action_started.bind([RP.PATIENT.name], False)}. {c_action_started.mfotl()})))
-        SINCE[0,*]
-                patient_examination_result(patient_id, "selected_examination_id", results)
-            AND
-                results = "bad")
-    AND
-                (NOT ((EXISTS {c_changed_state.bind([RP.PATIENT.name], False)}. {c_changed_state.mfotl()})
-            AND 
-                (EXISTS {c_action_started_2.bind([RP.PATIENT.name], False)}. {c_action_started_2.mfotl()}))
-        SINCE[0,*]
-                {vital_parameters_sub}))"""
+                ({" AND ".join(RECENT_EXAMINATIONS_CONSTRUCT + [RECENT_STATES_CONSTRUCT])})"""
 
-        pass
+        return [
+            cls.create(wrong_order_rule, "wrong_order"),
+            cls.create(to_late_rule, "to_late"),
+            cls.create(unfinished_rule, "unfinished"),
+        ]
+
+
+class InvalidFormulaError(ValueError):
+    pass
 
 
 class LogRuleRunner:
     # I need to start monpoly before subscribing to the log or store the log entries
-    loop = asyncio.new_event_loop()
-    instances = []
+    listening_loop = asyncio.new_event_loop()
+    sessions = defaultdict(list)
 
     def __init__(
         self,
-        exercise,
+        exercise_frontend_id,
         log,
         log_rule: LogRule,
     ):
+        self.valid = False
         self.log = log
-        self.exercise = exercise
+        self.session_id = exercise_frontend_id
         self.log_rule = log_rule
         self.log_transformer = log_rule.log_transformer
         self.monpoly_started_event = asyncio.Event()
         self.finished_reading_monpoly = asyncio.Event()
-        LogRuleRunner.instances.append(
-            self
-        )  # ToDo: remove when log rules get created inside trainer consumer
+        LogRuleRunner.sessions[self.session_id].append(self)
 
     def __del__(self):
         pass
 
+    @classmethod
+    def create(cls, exercise, log, log_rule: LogRule):
+        log_rule_runner = cls(exercise, log, log_rule)
+        log_rule_runner.initialize_log_rule()
+        return log_rule_runner
+
+    @classmethod
+    def start_session(cls, session_id):
+        for log_rule_runner in cls.sessions[session_id]:
+            log_rule_runner.stop_log_rule()
+
+    @classmethod
+    def stop_session(cls, session_id):
+        for log_rule_runner in cls.sessions[session_id]:
+            log_rule_runner.start_log_rule()
+
     def receive_log_entry(self, log_entry):
         transformed_log_entry = self.log_transformer.transform(log_entry)
-        asyncio.run_coroutine_threadsafe(
-            self._write_log_entry(transformed_log_entry), self.loop
+        future = asyncio.run_coroutine_threadsafe(
+            self._write_log_entry(transformed_log_entry), self.listening_loop
         )
+        future.result()
 
     async def _write_log_entry(self, monpolified_log_entry: str):
         print(f"Received log entry: {monpolified_log_entry}")
         await self.monpoly_started_event.wait()  # Wait until monpoly is ready
         if self.monpoly.stdin:
-            try:
-                encoded = monpolified_log_entry.encode()
-                self.monpoly.stdin.write(encoded)
-                await self.monpoly.stdin.drain()
-            except Exception as e:
-                raise e
+            encoded = monpolified_log_entry.encode()
+            self.monpoly.stdin.write(encoded)
+            await self.monpoly.stdin.drain()
         else:
             raise Exception("Monpoly is not running")
 
@@ -568,7 +604,7 @@ class LogRuleRunner:
         )
         if success_message in output.stdout:
 
-            return True, self._extract_environment_variables(output.stdout)
+            return True, True, self._extract_environment_variables(output.stdout)
         output = subprocess.run(
             [
                 "monpoly",
@@ -583,34 +619,44 @@ class LogRuleRunner:
             text=True,
         )
         if success_message in output.stdout:
-            return False, self._extract_environment_variables(output.stdout)
+            return True, False, self._extract_environment_variables(output.stdout)
 
-        raise Exception(output.stderr)
+    def initialize_log_rule(self):
+        self.valid, self.rewrite_allowed, self.free_variables = (
+            self._environment_infos()
+        )
+        if not self.valid:
+            raise InvalidFormulaError("Invalid formula")
+        return self.free_variables
 
     def start_log_rule(self):
         def launch_listener_loop(loop: asyncio.AbstractEventLoop):
             asyncio.set_event_loop(loop)
             loop.run_forever()
 
-        if (not self.loop) or (not self.loop.is_running()):
-            threading.Thread(target=launch_listener_loop, args=(self.loop,)).start()
-        rewrite_allowed, self.free_variables = self._environment_infos()
+        if (not self.listening_loop) or (not self.listening_loop.is_running()):
+            threading.Thread(
+                target=launch_listener_loop, args=(self.listening_loop,)
+            ).start()
+
+        if not self.valid:
+            raise InvalidFormulaError("Invalid formula")
         asyncio.run_coroutine_threadsafe(
             self._launch_monpoly(
                 self.log_rule.templatefile,
                 self.log_rule.signature,
-                rewrite_allowed,
+                self.rewrite_allowed,
                 self.free_variables,
             ),
-            self.loop,
+            self.listening_loop,
         )
-        self.log.subscribe_to_exercise(self.exercise, self, send_past_logs=True)
+        self.log.subscribe_to_exercise(self.session_id, self, send_past_logs=True)
         print(
             "self.log.subscribe_to_exercise(self.exercise, self, send_past_logs=True)"
         )
 
     def stop_log_rule(self):
-        asyncio.run_coroutine_threadsafe(self.terminate_monpoly(), self.loop)
+        asyncio.run_coroutine_threadsafe(self.terminate_monpoly(), self.listening_loop)
 
 
 # from ..channel_notifications import LogEntryDispatcher
@@ -623,9 +669,22 @@ class LogRuleRunner:
 #    (personnel_count >= 4)"""
 # test_rule = LogRule.create(test_rule_str, "test_rule")
 # log_rule_runner = LogRuleRunner(None, LogEntryDispatcher, test_rule)
-if __name__ == "main":
+if __name__ == "__main__":
     RP = sm.RuleProperty
-    PersonnelCheckRule.generate(operator="<")
-    PersonnelPrioritizationRule.generate(
-        RP.AIRWAY.name, ">", 4, 2, RP.CIRCULATION.name, "<", 4, 2
+    # PersonnelCheckRule.generate(operator="<")
+    # PersonnelPrioritizationRule.generate(
+    #    RP.AIRWAY.name, ">", 4, 2, RP.CIRCULATION.name, "<", 4, 2
+    # )
+    SymptomCombinationRule.generate(
+        "selected_action_id",
+        120,
+        {RP.CIRCULATION.name: 10.0},
+        {"selected_examination_id": "bad"},
     )
+# String vs int bei 0 in monpoly
+# To Late:
+# 1. ~~patienten_id wird gebunden in unterem part~~
+# 2. ~~string gebundene variablen werden nochmals gebunden~~
+# 3. ~~klammerung ums or fehlt~~
+# 4. ~~c_version wird nicht verwendet~~
+# 5. Examination results werden nicht getestet

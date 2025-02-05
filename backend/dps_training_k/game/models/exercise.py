@@ -87,10 +87,11 @@ class Exercise(NonEventable, models.Model):
         self.save(update_fields=["state"])
         if not self.is_running_state(old_state) and self.is_running_state(state):
             LogEntry.set_empty_timestamps(self)
+            LogRuleRunner.stop_session(self.frontend_id)
         elif self.state == self.StateTypes.FINISHED:
             ScheduledEvent.remove_events_of_exercise(self)
-            # for every instance of the LogRuleRunner, stop the log rule
-            for instance in LogRuleRunner.instances:
+            LogRuleRunner.start_session(self.frontend_id)
+            for instance in LogRuleRunner.sessions:
                 instance.stop_log_rule()
 
     def time_factor(self):

@@ -10,6 +10,7 @@ import template.models as template
 import datetime
 import threading
 import time
+from collections import defaultdict
 
 """
 This package is responsible to decide when to notify which consumers.
@@ -321,35 +322,34 @@ class ExerciseDispatcher(ChannelNotifier):
 
 
 class Observable:
-    _exercise_subscribers = {}
+    _exercise_subscribers = defaultdict(set)
 
     @classmethod
-    def subscribe_to_exercise(cls, exercise, subscriber, send_past_logs=False):
-        if exercise in cls._exercise_subscribers:
-            cls._exercise_subscribers[exercise].add(subscriber)
-        else:
-            cls._exercise_subscribers[exercise] = {subscriber}
+    def subscribe_to_exercise(cls, exercise_id, subscriber, send_past_logs=False):
+        cls._exercise_subscribers[exercise_id].add(subscriber)
         if send_past_logs:
-            past_logs = models.LogEntry.objects.filter(exercise=exercise).order_by("pk")
+            past_logs = models.LogEntry.objects.filter(exercise=exercise_id).order_by(
+                "pk"
+            )
             for log_entry in past_logs:
                 subscriber.receive_log_entry(log_entry)
             # subscriber.receive_log_entry(past_logs[0])
 
     @classmethod
-    def unsubscribe_from_exercise(cls, exercise, subscriber):
-        if exercise in cls._exercise_subscribers:
-            cls._exercise_subscribers[exercise].remove(subscriber)
+    def unsubscribe_from_exercise(cls, exercise_id, subscriber):
+        if exercise_id in cls._exercise_subscribers:
+            cls._exercise_subscribers[exercise_id].remove(subscriber)
 
     @classmethod
-    def _publish_obj(cls, obj, exercise):
+    def _publish_obj(cls, obj, exercise_id):
         # print("Evaluating validity")
         if not obj.is_valid():
             return
 
         print("Publishing obj")
-        if exercise in cls._exercise_subscribers:
+        if exercise_id in cls._exercise_subscribers:
             print("Exercise in subscribers")
-            for subscriber in cls._exercise_subscribers[exercise]:
+            for subscriber in cls._exercise_subscribers[exercise_id]:
                 subscriber.receive_log_entry(obj)
 
 

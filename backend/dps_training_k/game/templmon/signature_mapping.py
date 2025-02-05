@@ -52,11 +52,19 @@ class LogType:
     def bind(self, keys=[], include=True):
         if not include:
             keys = [var for var in self._variables.keys() if var not in keys]
+        keys = [key for key in keys if self.get_variable(key)[0] != '"']
         return ", ".join([self.get_variable(var) for var in keys])
 
     def compare_values_mfotl(self, key_values):
+        def quotify(value):
+            return f'"{value}"' if isinstance(value, str) else value
+
         return " AND ".join(
-            [f"{self.get_variable(key)} = {value}" for key, value in key_values.items()]
+            [
+                f"{self.get_variable(key)} = {quotify(value)}"
+                for key, value in key_values.items()
+                if self.get_variable(key)[0] != '"'
+            ]
         )
 
     @classmethod
