@@ -41,13 +41,13 @@ class RuleProperty:
 class LogType:
 
     _BASE_VARIABLES = []
-    _MONPOLY_NAME = None  # Expecting list with unique items
+    MONPOLY_NAME = None  # Expecting list with unique items
 
     def __init__(self):
         self._variables = {var.name: var.name for var in self._BASE_VARIABLES}
 
     def mfotl(self):
-        return f'{self._MONPOLY_NAME}({",".join(self._variables.values())})'
+        return f'{self.MONPOLY_NAME}({",".join(self._variables.values())})'
 
     def bind(self, keys=[], include=True):
         if not include:
@@ -81,7 +81,11 @@ class LogType:
 
     @classmethod
     def monpoly_representation(cls):
-        return f"{cls._MONPOLY_NAME}({', '.join([var.type for var in cls._BASE_VARIABLES])})"
+        return f"{cls.MONPOLY_NAME}({', '.join([var.type for var in cls._BASE_VARIABLES])})"
+
+    @classmethod
+    def log(cls, *args):
+        raise NotImplementedError
 
     def match(self, others, matching_variables):
         for other in others:
@@ -99,15 +103,33 @@ class LogType:
 
         self._variables[key] = value
 
+    @classmethod
+    def _monpolify_args(cls, args):
+        for arg, var in zip(args, cls._BASE_VARIABLES):
+            if var.type == RuleProperty.MPT.string:
+                arg = f'"{arg}"'
+            elif isinstance(arg, bool):
+                arg = str(arg).upper()
+
 
 class AssignedPersonnel(LogType):
     _BASE_VARIABLES = [RuleProperty.PERSONNEL, RuleProperty.PATIENT]
-    _MONPOLY_NAME = "assigned_personnel"
+    MONPOLY_NAME = "assigned_personnel"
+
+    @classmethod
+    def log(cls, personnel, patient):
+        cls._monpolify_args([personnel, patient])
+        return f"{cls.MONPOLY_NAME}({personnel}, {patient})"
 
 
 class UnassignedPersonnel(LogType):
     _BASE_VARIABLES = [RuleProperty.PERSONNEL]
-    _MONPOLY_NAME = "unassigned_personnel"
+    MONPOLY_NAME = "unassigned_personnel"
+
+    @classmethod
+    def log(cls, personnel):
+        cls._monpolify_args([personnel])
+        return f"{cls.MONPOLY_NAME}({personnel})"
 
 
 class ChangedState(LogType):
@@ -117,7 +139,12 @@ class ChangedState(LogType):
         RuleProperty.CIRCULATION,
         RuleProperty.DEAD,
     ]
-    _MONPOLY_NAME = "changed_state"
+    MONPOLY_NAME = "changed_state"
+
+    @classmethod
+    def log(cls, patient, airway, circulation, dead: bool):
+        cls._monpolify_args([patient, airway, circulation, dead])
+        return f"{cls.MONPOLY_NAME}({patient}, {airway}, {circulation}, {dead})"
 
 
 class PatientArrived(LogType):
@@ -127,7 +154,12 @@ class PatientArrived(LogType):
         RuleProperty.TRIAGE,
         RuleProperty.INJURY_LEVEL,
     ]
-    _MONPOLY_NAME = "patient_arrived"
+    MONPOLY_NAME = "patient_arrived"
+
+    @classmethod
+    def log(cls, patient, location, triage, injury_level):
+        cls._monpolify_args([patient, location, triage, injury_level])
+        return f"{cls.MONPOLY_NAME}({patient}, {location}, {triage}, {injury_level})"
 
 
 class PatientRelocated(LogType):
@@ -136,7 +168,12 @@ class PatientRelocated(LogType):
         RuleProperty.OLD_LOCATION,
         RuleProperty.NEW_LOCATION,
     ]
-    _MONPOLY_NAME = "patient_relocated"
+    MONPOLY_NAME = "patient_relocated"
+
+    @classmethod
+    def log(cls, patient, old_location, new_location):
+        cls._monpolify_args([patient, old_location, new_location])
+        return f"{cls.MONPOLY_NAME}({patient}, {old_location}, {new_location})"
 
 
 class ExaminationResult(LogType):
@@ -145,7 +182,12 @@ class ExaminationResult(LogType):
         RuleProperty.EXAMINATION,
         RuleProperty.RESULT,
     ]
-    _MONPOLY_NAME = "examination_result"
+    MONPOLY_NAME = "examination_result"
+
+    @classmethod
+    def log(cls, patient, examination, result):
+        cls._monpolify_args([patient, examination, result])
+        return f"{cls.MONPOLY_NAME}({patient}, {examination}, {result})"
 
 
 class ActionStarted(LogType):
@@ -153,7 +195,12 @@ class ActionStarted(LogType):
         RuleProperty.PATIENT,
         RuleProperty.ACTION,
     ]
-    _MONPOLY_NAME = "action_started"
+    MONPOLY_NAME = "action_started"
+
+    @classmethod
+    def log(cls, patient, action):
+        cls._monpolify_args([patient, action])
+        return f"{cls.MONPOLY_NAME}({patient}, {action})"
 
 
 class ActionCanceled(LogType):
@@ -161,7 +208,12 @@ class ActionCanceled(LogType):
         RuleProperty.PATIENT,
         RuleProperty.ACTION,
     ]
-    _MONPOLY_NAME = "action_canceled"
+    MONPOLY_NAME = "action_canceled"
+
+    @classmethod
+    def log(cls, patient, action):
+        cls._monpolify_args([patient, action])
+        return f"{cls.MONPOLY_NAME}({patient}, {action})"
 
 
 class ActionFinished(LogType):
@@ -169,7 +221,12 @@ class ActionFinished(LogType):
         RuleProperty.PATIENT,
         RuleProperty.ACTION,
     ]
-    _MONPOLY_NAME = "action_finished"
+    MONPOLY_NAME = "action_finished"
+
+    @classmethod
+    def log(cls, patient, action):
+        cls._monpolify_args([patient, action])
+        return f"{cls.MONPOLY_NAME}({patient}, {action})"
 
 
 def generate_monpoly_signature(file_path):

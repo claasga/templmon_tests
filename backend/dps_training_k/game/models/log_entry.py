@@ -23,6 +23,7 @@ class LogEntry(models.Model):
         EXPIRED = "EX", "expired"
         MOVED = "MO", "moved"
         TRIAGED = "TR", "triaged"
+        UPDATED = "UP", "updated"
 
     class Meta:
         constraints = [
@@ -115,6 +116,7 @@ class LogEntry(models.Model):
             self.TYPES.EXPIRED: "wirkt nicht mehr",
             self.TYPES.MOVED: "wurde verlegt",
             self.TYPES.TRIAGED: "wurde triagiert",
+            self.TYPES.UPDATED: "wurde aktualisiert",
         }
         if self.category == self.CATEGORIES.ACTION:
             message += f"{(content['name'])} {type_to_submessage[self.type]}"
@@ -131,6 +133,7 @@ class LogEntry(models.Model):
                 message += f" zu {content['location_type']} {content['location_name']}"
         elif self.category == self.CATEGORIES.PATIENT:
             type_to_submessage[self.TYPES.ARRIVED] = "wurde eingeliefert"
+            type_to_submessage[self.TYPES.UPDATED] = "hat seinen Zustand gewechselt"
             message += f"Patient*in {content['name']}({content['code']}) {type_to_submessage[self.type]}"
             if "injuries" in content:
                 message += f" mit den folgenden Verletzungen: {content['injuries']}"
@@ -140,6 +143,8 @@ class LogEntry(models.Model):
                 message += (
                     f" nach {content['location_type']} {content['location_name']}"
                 )
+            elif "state" in content:
+                message += f" zu {content['state']}"
         elif self.category == self.CATEGORIES.PERSONNEL:
             type_to_submessage[self.TYPES.ARRIVED] = "ist eingetroffen"
             message += f"{content['name']} {type_to_submessage[self.type]}"

@@ -209,6 +209,8 @@ class ActionInstanceDispatcher(ChannelNotifier):
                     for material, amount in applied_action.template.produced_resources().items()
                 }
                 content["produced"] = str(named_produced_resources)
+            if applied_action.template.category == template.Action.Category.EXAMINATION:
+                content["examinitaion_result"] = applied_action.result
         elif (
             applied_action.state_name == models.ActionInstanceStateNames.CANCELED
             and applied_action.states.filter(
@@ -506,6 +508,10 @@ class PatientInstanceDispatcher(ChannelNotifier):
             # get_triage_display gets the long version of a ChoiceField
             content["level"] = str(patient_instance.get_triage_display())
             type = models.LogEntry.TYPES.TRIAGED
+        elif changes and "patient_state" in changes:
+            type = models.LogEntry.TYPES.UPDATED
+            content["state"] = f"{patient_instance.patient_state.vital_signs}"
+            content["dead"] = f"{patient_instance.patient_state.is_dead}"
         elif changes and changes_set & cls.location_changes:
             type = models.LogEntry.TYPES.MOVED
             current_location = patient_instance.attached_instance()
