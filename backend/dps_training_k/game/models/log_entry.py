@@ -134,6 +134,7 @@ class LogEntry(models.Model):
         elif self.category == self.CATEGORIES.PATIENT:
             type_to_submessage[self.TYPES.ARRIVED] = "wurde eingeliefert"
             type_to_submessage[self.TYPES.UPDATED] = "hat seinen Zustand gewechselt"
+            print(f"Type is: {self.type}")
             message += f"Patient*in {content['name']}({content['code']}) {type_to_submessage[self.type]}"
             if "injuries" in content:
                 message += f" mit den folgenden Verletzungen: {content['injuries']}"

@@ -10,7 +10,7 @@ if __name__ != "__main__":
         SingularViolationTracker,
         OutputParser,
     )
-    from .rule_generators import ViolationType
+    from .rule_generators import ViolationType, LogRule
     from ..channel_notifications import ViolationDispatcher
 
 
@@ -26,7 +26,7 @@ class RuleRunner:
         self,
         session_id,
         log,
-        log_rule,
+        log_rule: LogRule,
     ):
         self.valid = False
         self.log = log
@@ -60,7 +60,7 @@ class RuleRunner:
 
     async def _write_log_entry(self, monpolified_log_entry: str):
         print(f"Received log entry: {monpolified_log_entry}")
-        await self.monpoly_started_event.wait()  # Wait until monpoly is ready
+        await self.monpoly_started_event.wait()
         if self.monpoly.stdin:
             encoded = monpolified_log_entry.encode()
             self.monpoly.stdin.write(encoded)
@@ -68,16 +68,16 @@ class RuleRunner:
         else:
             raise Exception("Monpoly is not running")
 
-    async def _launch_monpoly(self, mfotl_path, sig_path, rewrite, free_variables):
+    async def _launch_monpoly(self):
         """Has to be launched in a separate thread"""
         self.monpoly = await asyncio.create_subprocess_exec(
             "monpoly",
             "-sig",
-            sig_path,
+            self.log_rule.signature,
             "-formula",
-            mfotl_path,
+            self.log_rule.rule_file_path,
             "-verbose",
-            "" if rewrite else "-no_rw",
+            "" if self.rewrite_allowed else "-no_rw",
             env=os.environ.copy(),
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
@@ -91,7 +91,8 @@ class RuleRunner:
             self.free_variables,
             ViolationDispatcher,
             self.session_id,
-            self.log_rule.name,
+            self.log_rule.rule_name,
+            self.log_rule.template_name,
         )
         out_p = OutputParser(self.monpoly, tracker)
         asyncio.create_task(out_p.read_output())
@@ -117,43 +118,53 @@ class RuleRunner:
 
     def _environment_infos(self):
         success_message = "formula is monitorable."
-        output = subprocess.run(
+        terminated_process = subprocess.run(
             [
                 "monpoly",
                 "-sig",
                 self.log_rule.signature,
                 "-formula",
-                self.log_rule.templatefile,
+                self.log_rule.rule_file_path,
                 "-check",
             ],
             capture_output=True,
             text=True,
         )
-        if success_message in output.stdout:
-
-            return True, True, self._extract_environment_variables(output.stdout)
-        output = subprocess.run(
+        print(terminated_process.stdout)
+        if success_message in terminated_process.stdout:
+            return (
+                True,
+                True,
+                self._extract_environment_variables(terminated_process.stdout),
+            )
+        terminated_process = subprocess.run(
             [
                 "monpoly",
                 "-sig",
                 self.log_rule.signature,
                 "-formula",
-                self.log_rule.templatefile,
+                self.log_rule.rule_file_path,
                 "-no_rw",
                 "-check",
             ],
             capture_output=True,
             text=True,
         )
-        if success_message in output.stdout:
-            return True, False, self._extract_environment_variables(output.stdout)
+        print(terminated_process.stdout)
+        if success_message in terminated_process.stdout:
+            return (
+                True,
+                False,
+                self._extract_environment_variables(terminated_process.stdout),
+            )
+        return False, None, None
 
     def _initialize_log_rule(self):
         self.valid, self.rewrite_allowed, self.free_variables = (
             self._environment_infos()
         )
         if not self.valid:
-            raise InvalidFormulaError("Invalid formula")
+            raise InvalidFormulaError(f"Invalid formula: {self.log_rule.rule_name}")
         return self.free_variables
 
     def start(self):
@@ -169,18 +180,10 @@ class RuleRunner:
         if not self.valid:
             raise InvalidFormulaError("Invalid formula")
         asyncio.run_coroutine_threadsafe(
-            self._launch_monpoly(
-                self.log_rule.templatefile,
-                self.log_rule.signature,
-                self.rewrite_allowed,
-                self.free_variables,
-            ),
+            self._launch_monpoly(),
             self.listening_loop,
         )
         self.log.subscribe_to_exercise(self.session_id, self, send_past_logs=True)
-        print(
-            "self.log.subscribe_to_exercise(self.exercise, self, send_past_logs=True)"
-        )
 
     def stop(self):
         asyncio.run_coroutine_threadsafe(self._terminate_monpoly(), self.listening_loop)

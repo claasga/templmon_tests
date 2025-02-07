@@ -329,31 +329,31 @@ class Observable:
     _exercise_subscribers = defaultdict(set)
 
     @classmethod
-    def subscribe_to_exercise(cls, exercise_id, subscriber, send_past_logs=False):
-        cls._exercise_subscribers[exercise_id].add(subscriber)
+    def subscribe_to_exercise(
+        cls, exercise_frontend_id, subscriber, send_past_logs=False
+    ):
+        cls._exercise_subscribers[exercise_frontend_id].add(subscriber)
         if send_past_logs:
-            past_logs = models.LogEntry.objects.filter(exercise=exercise_id).order_by(
-                "pk"
-            )
+            past_logs = models.LogEntry.objects.filter(
+                exercise__frontend_id=exercise_frontend_id
+            ).order_by("pk")
             for log_entry in past_logs:
                 subscriber.receive_log_entry(log_entry)
-            # subscriber.receive_log_entry(past_logs[0])
 
     @classmethod
-    def unsubscribe_from_exercise(cls, exercise_id, subscriber):
-        if exercise_id in cls._exercise_subscribers:
-            cls._exercise_subscribers[exercise_id].remove(subscriber)
+    def unsubscribe_from_exercise(cls, exercise_frontend_id, subscriber):
+        if exercise_frontend_id in cls._exercise_subscribers:
+            cls._exercise_subscribers[exercise_frontend_id].remove(subscriber)
 
     @classmethod
-    def _publish_obj(cls, obj, exercise_id):
-        # print("Evaluating validity")
+    def _publish_obj(cls, obj, exercise_frontend_id):
         if not obj.is_valid():
             return
 
         print("Publishing obj")
-        if exercise_id in cls._exercise_subscribers:
+        if exercise_frontend_id in cls._exercise_subscribers:
             print("Exercise in subscribers")
-            for subscriber in cls._exercise_subscribers[exercise_id]:
+            for subscriber in cls._exercise_subscribers[exercise_frontend_id]:
                 subscriber.receive_log_entry(obj)
 
 
@@ -362,7 +362,7 @@ class LogEntryDispatcher(Observable, ChannelNotifier):
     @classmethod
     def save_and_notify(cls, obj, changes, save_origin, *args, **kwargs):
         super().save_and_notify(obj, changes, save_origin, *args, **kwargs)
-        cls._publish_obj(obj, obj.exercise)
+        cls._publish_obj(obj, obj.exercise.frontend_id)
 
     @classmethod
     def get_group_name(cls, exercise):
@@ -496,7 +496,7 @@ class PatientInstanceDispatcher(ChannelNotifier):
         category = models.LogEntry.CATEGORIES.PATIENT
         type = None
         content = {"name": patient_instance.name, "code": str(patient_instance.code)}
-
+        recall_args = None
         if not is_updated:
             type = models.LogEntry.TYPES.ARRIVED
             if (
@@ -504,20 +504,23 @@ class PatientInstanceDispatcher(ChannelNotifier):
                 and patient_instance.static_information.injury
             ):
                 content["injuries"] = str(patient_instance.static_information.injury)
+                recall_args = [patient_instance, ["patient_state"], True]
         elif changes and "triage" in changes:
             # get_triage_display gets the long version of a ChoiceField
             content["level"] = str(patient_instance.get_triage_display())
             type = models.LogEntry.TYPES.TRIAGED
         elif changes and "patient_state" in changes:
             type = models.LogEntry.TYPES.UPDATED
-            content["state"] = f"{patient_instance.patient_state.vital_signs}"
-            content["dead"] = f"{patient_instance.patient_state.is_dead}"
+            content["state"] = patient_instance.patient_state.vital_signs
+            content["dead"] = patient_instance.patient_state.is_dead
         elif changes and changes_set & cls.location_changes:
             type = models.LogEntry.TYPES.MOVED
             current_location = patient_instance.attached_instance()
             content["location_type"] = current_location.frontend_model_name()
             content["location_name"] = str(current_location.name)
-
+        else:
+            print(f"changes are: {changes}")
+            print(f"Wird geupdated? {is_updated}")
         if content:
             if patient_instance.area:
                 models.LogEntry.objects.create(
@@ -536,6 +539,8 @@ class PatientInstanceDispatcher(ChannelNotifier):
                     content=content,
                     patient_instance=patient_instance,
                 )
+        if recall_args:
+            cls.create_trainer_log(*recall_args)
 
     @classmethod
     def get_exercise(cls, patient_instance):
@@ -636,16 +641,7 @@ class PersonnelDispatcher(ChannelNotifier):
                 )
             if log_entry:
                 log_entry.personnel.add(personnel)
-                # print("Finalizing log entry")
-                # print(personnel)
-                # print(log_entry.personnel)
-                # print(log_entry.personnel.all())
-                # print("Settin dirty to False")
                 log_entry.set_dirty(False)
-                # print(log_entry.personnel.all())
-
-    #
-    # print("Dirty is false")
 
     @classmethod
     def delete_and_notify(cls, personnel, *args, **kwargs):
@@ -670,22 +666,20 @@ class ViolationDispatcher:
         return f"log_rules_{session_id}_log"
 
     @classmethod
-    async def violation_found(cls, exercise, log_rule_violation):
-        channel = cls.get_group_name(exercise)
-        event = {
-            "type": ChannelEventTypes.RULE_VIOLATION_EVENT,
-            "log_entry_id": log_rule_violation,
-        }
-        _notify_group(channel, event)
-
-    @classmethod
     def dispatch_durational_violation_started(
-        cls, session_id, rule_name, violation_assignment, start_stamp, start_point
+        cls,
+        session_id,
+        template_name,
+        rule_name,
+        violation_assignment,
+        start_stamp,
+        start_point,
     ):
         channel = cls.get_group_name(session_id)
         event = {
             "type": ChannelEventTypes.DURATIONAL_VIOLATION_START_EVENT,
             "rule_name": rule_name,
+            "template_name": template_name,
             "violation_assignment": violation_assignment,
             "start_stamp": start_stamp,
             "start_point": start_point,
@@ -697,6 +691,7 @@ class ViolationDispatcher:
         cls,
         session_id,
         rule_name,
+        template_name,
         violation_assignment,
         start_stamp,
         start_point,
@@ -707,6 +702,7 @@ class ViolationDispatcher:
         event = {
             "type": ChannelEventTypes.DURATIONAL_VIOLATION_START_EVENT,
             "rule_name": rule_name,
+            "template_name": template_name,
             "violation_assignment": violation_assignment,
             "start_stamp": start_stamp,
             "start_point": start_point,
@@ -717,12 +713,19 @@ class ViolationDispatcher:
 
     @classmethod
     def dispatch_singular_violation(
-        cls, session_id, rule_name, violation_assignment, time_stamp, time_point
+        cls,
+        session_id,
+        rule_name,
+        template_name,
+        violation_assignment,
+        time_stamp,
+        time_point,
     ):
         channel = cls.get_group_name(session_id)
         event = {
             "type": ChannelEventTypes.DURATIONAL_VIOLATION_START_EVENT,
             "rule_name": rule_name,
+            "template_name": template_name,
             "violation_assignment": violation_assignment,
             "time_stamp": time_stamp,
             "time_point": time_point,

@@ -6,7 +6,7 @@ from helpers.eventable import NonEventable
 from .lab import Lab
 from .scheduled_event import ScheduledEvent
 from .log_entry import LogEntry
-from ..templmon.rule_runner import LogRule
+from ..templmon.rule_generators import LogRule
 from ..templmon.rule_runner import RuleRunner
 
 

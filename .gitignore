@@ -7,6 +7,5 @@ backend/dps_training_k/game/migrations/0008_remove_logentry_message_logentry_con
 _build/.filesystem-clock
 _build/.lock
 _build/log
-backend/dps_training_k/game/templmon/log_rules/test_rule_*
-.gitignore
+backend/dps_training_k/game/templmon/log_rules/*.mfotl
 backend/dps_training_k/game/templmon/signature_test.sig

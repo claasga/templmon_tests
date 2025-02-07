@@ -1,10 +1,10 @@
 ARG PYTHON_VERSION=3.12-slim-bullseye
 
 # define an alias for the specfic python version used in this file.
-FROM python:${PYTHON_VERSION} as python
+FROM python:${PYTHON_VERSION} AS python
 
 # Python 'run' stage
-FROM python as python-run-stage
+FROM python AS python-run-stage
 
 ARG APP_HOME=/app
 

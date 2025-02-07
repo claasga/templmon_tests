@@ -77,8 +77,8 @@ class LogTransformer:
             log_str += PatientArrived.log(patient_id, area_id, triage_display, injuries)
         elif log_type == MonpolyLogEntry.CHANGED_STATE:
             patient_id = log_entry.patient_instance.pk
-            airway = log_entry.content.get("state").get("Airway", "")
-            circulation = log_entry.content.get("state").get("Circulation", "")
+            airway = log_entry.content.get("state", {}).get("Airway", "")
+            circulation = log_entry.content.get("state", {}).get("Circulation", "")
             dead = log_entry.content.get("dead")
             log_str += ChangedState.log(patient_id, airway, circulation, dead)
         elif log_type == MonpolyLogEntry.ACTION_STARTED:
@@ -95,6 +95,6 @@ class LogTransformer:
             result = log_entry.content.get("examination_result")
             log_str += ExaminationResult.log(patient_id, action, result)
         else:
-            log_str += f"unknown_log_type({log_entry.pk})"
+            log_str += f"unknown_log_type({log_entry.pk}, {log_entry.type}, {log_entry.category})"
 
         return log_str

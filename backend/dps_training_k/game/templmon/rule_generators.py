@@ -20,22 +20,38 @@ class LogRule:
     RULE_FILENAME = "mfotl"
     DEFAULT_SIGNATURE = os.path.join(BASE_DIR, "kdps.sig")
 
-    def __init__(self, signature, rule_file_path, violation_type: ViolationType, name):
+    def __init__(
+        self,
+        signature,
+        rule_file_path,
+        violation_type: ViolationType,
+        template_name,
+        rule_name,
+    ):
         self.signature = signature
         self.rule_file_path = rule_file_path
         self.log_transformer = lt.LogTransformer
         self.violation_type = violation_type
-        self.name = name
+        self.template_name = template_name
+        self.rule_name = rule_name
 
     # def __del__(self):
-    #    os.remove(self.rule_file_path)
+    #     os.remove(self.rule_file_path)
 
     @classmethod
-    def create(cls, rule: str, name: str, violation_type: ViolationType):
-        file_path = cls._generate_file_path(name)
+    def create(
+        cls,
+        rule: str,
+        template_name: str,
+        violation_type: ViolationType,
+        rule_name: str,
+    ):
+        file_path = cls._generate_file_path(f"{template_name}_{rule_name}")
         with open(file_path, "w") as f:
             f.write(rule)
-        return cls(cls.DEFAULT_SIGNATURE, file_path, violation_type, name)
+        return cls(
+            cls.DEFAULT_SIGNATURE, file_path, violation_type, template_name, rule_name
+        )
 
     @classmethod
     def generate(cls):
@@ -201,18 +217,16 @@ class PersonnelCheckRule(LogRule):
         cls, personnel_count, patient_arrived, unassigned_personnel, assigned_personnel
     ):
         RP = sm.RuleProperty
-        rule = f"""
-    (EXISTS {patient_arrived.bind([RP.PATIENT.name], False)}. 
+        rule = f"""(EXISTS {patient_arrived.bind([RP.PATIENT.name], False)}. 
         ONCE[0,*) {patient_arrived.mfotl()}) 
 AND
-        ((personnel_count <- CNT {RP.PERSONNEL};{RP.PATIENT} 
+        ((personnel_count <- CNT {RP.PERSONNEL.name};{RP.PATIENT.name} 
                 (NOT {unassigned_personnel.mfotl()}) 
             SINCE[0,*)
                 {assigned_personnel.mfotl()})
     AND 
         personnel_count >= {personnel_count})
 """
-        print(rule)
         return rule
 
     @classmethod
@@ -318,7 +332,9 @@ class SymptomCombinationRule(LogRule):
             )
             patient_arrived.match(examination_formulas, [RP.PATIENT.name])
             for i, key in enumerate(examination_results.keys()):
-                examination_formulas[i].set_variable(RP.EXAMINATION.name, f'"{key}"')
+                examination_formulas[i].set_variable(
+                    RP.EXAMINATION.name, sm.LogType._monpolify_string(key)
+                )
             examination_results_base_subs = [
                 f"{form.mfotl()}{(' AND ' + cmp) if (cmp := form.compare_values_mfotl({RP.EXAMINATION.name: value})) else ''}"
                 for form, (key, value) in zip(
@@ -342,7 +358,9 @@ class SymptomCombinationRule(LogRule):
             [action_started, action_started_2, c_action_started, c_action_started_2],
             [RP.PATIENT.name],
         )
-        action_started.set_variable(RP.ACTION.name, f'"{action}"')
+        action_started.set_variable(
+            RP.ACTION.name, sm.LogType._monpolify_string(action)
+        )
 
         action_canceled = sm.ActionCanceled()
         action_started.match([action_canceled], [RP.PATIENT.name, RP.ACTION.name])
@@ -432,16 +450,14 @@ AND
                 wrong_order_rule,
                 "wrong_order",
                 ViolationType.SINGULAR,
-                f"{name}_wrong_order",
+                name,
             ),
-            cls.create(
-                to_late_rule, "to_late", ViolationType.DURATIONAL, f"{name}_to_late"
-            ),
+            cls.create(to_late_rule, "to_late", ViolationType.DURATIONAL, f"name"),
             cls.create(
                 unfinished_rule,
                 "unfinished",
                 ViolationType.SINGULAR,
-                f"{name}_unfinished",
+                name,
             ),
         ]
 

@@ -1,3 +1,6 @@
+import re
+
+
 class RuleProperty:
     class MPT:
         string = "string"
@@ -27,9 +30,9 @@ class RuleProperty:
     DEVICE = NameType("device", MPT.string)
     TRIAGE = NameType("triage", MPT.string)
     INJURY_LEVEL = NameType("injury_level", MPT.string)
-    AIRWAY = NameType("airway", MPT.float)
-    BREATHING = NameType("breathing", MPT.float)
-    CIRCULATION = NameType("circulation", MPT.float)
+    AIRWAY = NameType("airway", MPT.string)
+    BREATHING = NameType("breathing", MPT.string)
+    CIRCULATION = NameType("circulation", MPT.string)
     BEWUSSTSEIN = NameType("consciousness", MPT.string)
     PUPILLEN = NameType("pupils", MPT.string)
     PSYCHE = NameType("psyche", MPT.string)
@@ -56,12 +59,9 @@ class LogType:
         return ", ".join([self.get_variable(var) for var in keys])
 
     def compare_values_mfotl(self, key_values):
-        def quotify(value):
-            return f'"{value}"' if isinstance(value, str) else value
-
         return " AND ".join(
             [
-                f"{self.get_variable(key)} = {quotify(value)}"
+                f"{self.get_variable(key)} = {self._monpolify_string(value) if isinstance(value, str) else value}"
                 for key, value in key_values.items()
                 if self.get_variable(key)[0] != '"'
             ]
@@ -104,12 +104,38 @@ class LogType:
         self._variables[key] = value
 
     @classmethod
+    def _log(cls, args):
+        args = cls._monpolify_args(args)
+        args = [str(arg) for arg in args]
+        return f"{cls.MONPOLY_NAME}({', '.join(args)})"
+
+    @classmethod
+    def _monpolify_string(cls, text: str):
+        def replace_german_chars(text: str) -> str:
+            mapping = {
+                ord("ä"): "ae",
+                ord("ö"): "oe",
+                ord("ü"): "ue",
+                ord("ß"): "ss",
+                ord("Ä"): "Ae",
+                ord("Ö"): "Oe",
+                ord("Ü"): "Ue",
+            }
+            return text.translate(mapping)
+
+        text = replace_german_chars(text)
+        pattern = """[^A-Za-z0-9:_'"/-]"""
+        text = f'"{re.sub(pattern, "_", str(text))}"'
+        return text
+
+    @classmethod
     def _monpolify_args(cls, args):
-        for arg, var in zip(args, cls._BASE_VARIABLES):
+        for i, (arg, var) in enumerate(zip(args, cls._BASE_VARIABLES)):
             if var.type == RuleProperty.MPT.string:
-                arg = f'"{arg}"'
+                args[i] = cls._monpolify_string(str(arg))
             elif isinstance(arg, bool):
-                arg = str(arg).upper()
+                args[i] = str(arg).upper()
+        return args
 
 
 class AssignedPersonnel(LogType):
@@ -118,8 +144,7 @@ class AssignedPersonnel(LogType):
 
     @classmethod
     def log(cls, personnel, patient):
-        cls._monpolify_args([personnel, patient])
-        return f"{cls.MONPOLY_NAME}({personnel}, {patient})"
+        return cls._log([personnel, patient])
 
 
 class UnassignedPersonnel(LogType):
@@ -128,8 +153,7 @@ class UnassignedPersonnel(LogType):
 
     @classmethod
     def log(cls, personnel):
-        cls._monpolify_args([personnel])
-        return f"{cls.MONPOLY_NAME}({personnel})"
+        return cls._log([personnel])
 
 
 class ChangedState(LogType):
@@ -143,8 +167,7 @@ class ChangedState(LogType):
 
     @classmethod
     def log(cls, patient, airway, circulation, dead: bool):
-        cls._monpolify_args([patient, airway, circulation, dead])
-        return f"{cls.MONPOLY_NAME}({patient}, {airway}, {circulation}, {dead})"
+        return cls._log([patient, airway, circulation, dead])
 
 
 class PatientArrived(LogType):
@@ -158,8 +181,7 @@ class PatientArrived(LogType):
 
     @classmethod
     def log(cls, patient, location, triage, injury_level):
-        cls._monpolify_args([patient, location, triage, injury_level])
-        return f"{cls.MONPOLY_NAME}({patient}, {location}, {triage}, {injury_level})"
+        return cls._log([patient, location, triage, injury_level])
 
 
 class PatientRelocated(LogType):
@@ -172,8 +194,7 @@ class PatientRelocated(LogType):
 
     @classmethod
     def log(cls, patient, old_location, new_location):
-        cls._monpolify_args([patient, old_location, new_location])
-        return f"{cls.MONPOLY_NAME}({patient}, {old_location}, {new_location})"
+        return cls._log([patient, old_location, new_location])
 
 
 class ExaminationResult(LogType):
@@ -186,8 +207,7 @@ class ExaminationResult(LogType):
 
     @classmethod
     def log(cls, patient, examination, result):
-        cls._monpolify_args([patient, examination, result])
-        return f"{cls.MONPOLY_NAME}({patient}, {examination}, {result})"
+        return cls._log([patient, examination, result])
 
 
 class ActionStarted(LogType):
@@ -199,8 +219,7 @@ class ActionStarted(LogType):
 
     @classmethod
     def log(cls, patient, action):
-        cls._monpolify_args([patient, action])
-        return f"{cls.MONPOLY_NAME}({patient}, {action})"
+        return cls._log([patient, action])
 
 
 class ActionCanceled(LogType):
@@ -212,8 +231,7 @@ class ActionCanceled(LogType):
 
     @classmethod
     def log(cls, patient, action):
-        cls._monpolify_args([patient, action])
-        return f"{cls.MONPOLY_NAME}({patient}, {action})"
+        return cls._log([patient, action])
 
 
 class ActionFinished(LogType):
@@ -225,8 +243,7 @@ class ActionFinished(LogType):
 
     @classmethod
     def log(cls, patient, action):
-        cls._monpolify_args([patient, action])
-        return f"{cls.MONPOLY_NAME}({patient}, {action})"
+        return cls._log([patient, action])
 
 
 def generate_monpoly_signature(file_path):
@@ -242,35 +259,19 @@ def generate_monpoly_signature(file_path):
     with open(f"{file_path}.sig", "w") as f:
         for subclass in subclasses:
             f.write(subclass.monpoly_representation() + "\n")
+        f.write("unknown_log_type(int, string, string)")
 
 
 if __name__ == "__main__":
-    assigned_personnel = ChangedState()
-    print(
-        assigned_personnel.get_variable(RuleProperty.CIRCULATION.name)
-    )  # Output: breathing
-    assigned_personnel.set_variable(RuleProperty.CIRCULATION.name, "selected")
-    print(
-        assigned_personnel.get_variable(RuleProperty.CIRCULATION.name)
-    )  # Output: selected
-    print(assigned_personnel.mfotl())  # Output: patient,airway,selected,aliveness
-    print(
-        assigned_personnel.monpoly_representation()
-    )  # Output: changed_state(string, float, float, string)
     import os
+    import re
 
-    generate_monpoly_signature(
-        os.path.join(os.path.dirname(__file__), "signature_test")
-    )
-    print(assigned_personnel.bind(["patient", "dead"]))  # Output: airway, selected
-    bulk = ChangedState.bulk_create(
-        3, matching_variables={RuleProperty.PATIENT.name: "special_name"}
-    )
-    for e in bulk:
-        print(e.mfotl())
     print(
-        assigned_personnel.compare_values_mfotl(
-            {RuleProperty.CIRCULATION.name: 1.7, RuleProperty.DEAD.name: "TRUE"}
+        AssignedPersonnel._monpolify_args(
+            [
+                "Herzfreq: 83-90 /min|peripher kräftig tastbar|RR: 143/083",
+                "Atemfreq: 25 /min|SpO2: 99 %|vertiefte Atmung|normales AG hörbar",
+            ]
         )
     )
-    print(assigned_personnel.compare_values_mfotl({RuleProperty.CIRCULATION.name: 1.7}))
+    generate_monpoly_signature(os.path.join(os.path.dirname(__file__), "kdps"))

@@ -3,11 +3,12 @@ import asyncio
 
 
 class ViolationTracker:
-    def __init__(self, keys, violation_listener, session_id, name):
+    def __init__(self, keys, violation_listener, session_id, rule_name, template_name):
         self._keys = keys
         self._violation_listener = violation_listener
         self._session_id = session_id
-        self._name = name
+        self._rule_name = rule_name
+        self._template_name = template_name
 
     def update_violations(self, timestamp, timepoint, violations: list[dict]):
         pass
@@ -21,7 +22,8 @@ class SingularViolationTracker(ViolationTracker):
         for violation in violations:
             self._violation_listener.dispatch_singular_violation(
                 self._session_id,
-                self._name,
+                self._rule_name,
+                self._template_name,
                 dict(zip(self._keys, violation)),
                 timestamp,
                 timepoint,
@@ -29,8 +31,8 @@ class SingularViolationTracker(ViolationTracker):
 
 
 class DurationalViolationTracker(ViolationTracker):
-    def __init__(self, keys, violation_listener, session_id, name):
-        super().__init__(keys, violation_listener, session_id, name)
+    def __init__(self, keys, violation_listener, session_id, rule_name, template_name):
+        super().__init__(keys, violation_listener, session_id, rule_name, template_name)
         self.current_unfinished_violations = {}
 
     def _add_violations(self, timestamp, timepoint, violations):
@@ -38,7 +40,8 @@ class DurationalViolationTracker(ViolationTracker):
             self.current_unfinished_violations[violation] = (timestamp, timepoint)
             self._violation_listener.dispatch_violation_started(
                 self._session_id,
-                self._name,
+                self._rule_name,
+                self._template_name,
                 dict(zip(self._keys, violation)),
                 timestamp,
                 timepoint,
@@ -49,7 +52,8 @@ class DurationalViolationTracker(ViolationTracker):
             start_stamp, start_point = self.current_unfinished_violations.pop(violation)
             self._violation_listener.dispatch_violation_finished(
                 self._session_id,
-                self._name,
+                self._rule_name,
+                self._template_name,
                 dict(zip(self._keys, violation)),
                 start_stamp,
                 start_point,
@@ -267,3 +271,10 @@ class OutputParser:
 #    ),
 #    DurationalViolationReceiver(free_variables, ViolationDispatcher),
 # )
+if __name__ == "__main__":
+    random = "ad"
+    DurationalViolationTracker(
+        ["pat_2", "pat_3"],
+        random,
+        "nzagkj",
+    )

@@ -13,7 +13,7 @@ from ..channel_notifications import (
     ViolationDispatcher,
 )
 from ..serializers import LogEntrySerializer
-from ..templmon.rule_generators import SymptomCombinationRule
+from ..templmon.rule_generators import SymptomCombinationRule, PersonnelCheckRule
 from ..templmon.rule_runner import RuleRunner, InvalidFormulaError
 
 
@@ -123,9 +123,11 @@ class TrainerConsumer(AbstractConsumer):
                 "personnelName",
             ),
             self.TrainerIncomingMessageTypes.LOG_RULE_ADD: (
-                self.handle_add_log_rule,
+                self.handle_add_rule,
                 "logRuleName",
-                "fields",
+                "type",
+                "name",
+                "configuration",
             ),
             self.TrainerIncomingMessageTypes.LOG_RULE_DELETE: (
                 self.handle_delete_log_rule,
@@ -152,12 +154,15 @@ class TrainerConsumer(AbstractConsumer):
     def handle_add_area(self, exercise):
         Area.create_area(name="Bereich", exercise=exercise, isPaused=False)
 
-    def handle_add_rule(self, exercise, type, name, content):
+    def handle_add_rule(self, exercise, type, name, configuration):
         try:
+            rules = None
             if type == "symptom-combination":
-                rules = SymptomCombinationRule.generate(name, **content)
-                for rule in rules:
-                    RuleRunner(exercise.frontend_id, LogEntryDispatcher, rule, name)
+                rules = SymptomCombinationRule.generate(name, **configuration)
+            elif type == "personnel_check":
+                rules = [PersonnelCheckRule.generate(name, **configuration)]
+            for rule in rules:
+                RuleRunner(exercise.frontend_id, LogEntryDispatcher, rule)
         except InvalidFormulaError as e:
             self.send_failure(str(e))
 
@@ -197,15 +202,21 @@ class TrainerConsumer(AbstractConsumer):
         content = {
             "action": "selected_action_id",
             "timeframe": 120,
-            "vital_parameters": {"circulation": 10.0},
-            "examination_results": {"selected_examination_id": "bad"},
+            "vital_parameters": {
+                "circulation": "Herzfreq: 83 /min|peripher kräftig tastbar|RR: 143/083"
+            },
+            "examination_results": {
+                "Ultraschall Abdomen": "Abdomen; Normalbefund; keine pathologischen Veränderungen; Thorax: keine Ergüsse sichtbar"
+            },
         }
-        self.handle_add_log_rule(exercise, "symptom-combination", "test_rule", content)
+        self.handle_add_rule(
+            self.exercise, "symptom-combination", "ultraschall_rule", content
+        )
+        content = {"operator": ">=", "personnel_count": 2}
+        self.handle_add_rule(self.exercise, "personnel_check", "two_rule", content)
 
     def handle_end_exercise(self, exercise):
         exercise.update_state(Exercise.StateTypes.FINISHED)
-        for rule in self.log_rules:
-            rule.stop_log_rule()
 
     def handle_start_exercise(self, exercise):
         exercise.start_exercise()
@@ -387,9 +398,6 @@ class TrainerConsumer(AbstractConsumer):
         personnel = Personnel.objects.get(id=personnel_id)
         personnel.name = personnel_name
         personnel.save(update_fields=["name"])
-
-    def handle_add_log_rule(self, _, log_rule_name, fields):
-        pass
 
     def handle_delete_log_rule(self, _, log_rule_id):
         pass
