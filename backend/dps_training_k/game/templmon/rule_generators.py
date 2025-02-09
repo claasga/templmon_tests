@@ -9,8 +9,18 @@ else:
 
 
 class ViolationType:
-    DURATIONAL = 0
-    SINGULAR = 1
+    IS_DURATIONAL = None
+
+
+class SingularViolationType(ViolationType):
+    IS_DURATIONAL = False
+
+
+class DurationalViolationType(ViolationType):
+    IS_DURATIONAL = True
+
+    def __init__(self, same_violation_keys):
+        self.same_violation_keys = same_violation_keys
 
 
 class LogRule:
@@ -37,6 +47,12 @@ class LogRule:
 
     # def __del__(self):
     #     os.remove(self.rule_file_path)
+    @property
+    def same_violation_keys(self):
+        if self.violation_type.IS_DURATIONAL:
+            return self.violation_type.same_violation_keys
+        else:
+            return None
 
     @classmethod
     def create(
@@ -206,7 +222,15 @@ AND
 """
         print(rule)
         return cls.create(
-            rule, "personnel_prioritization", ViolationType.DURATIONAL, name
+            rule,
+            "personnel_prioritization",
+            DurationalViolationType(
+                [
+                    patient_1_name,
+                    patient_2_name,
+                ]
+            ),
+            name,
         )
 
 
@@ -296,7 +320,12 @@ OR
                 assigned_personnel_2,
             )
 
-        return cls.create(rule, "personnel_check", ViolationType.DURATIONAL, name)
+        return cls.create(
+            rule,
+            "personnel_check",
+            DurationalViolationType([patient_arrived.get_variable(RP.PATIENT.name)]),
+            name,
+        )
 
 
 class SymptomCombinationRule(LogRule):
@@ -449,14 +478,21 @@ AND
             cls.create(
                 wrong_order_rule,
                 "wrong_order",
-                ViolationType.SINGULAR,
+                SingularViolationType(),
                 name,
             ),
-            cls.create(to_late_rule, "to_late", ViolationType.DURATIONAL, f"name"),
+            cls.create(
+                to_late_rule,
+                "to_late",
+                DurationalViolationType(
+                    [patient_arrived.get_variable(RP.PATIENT.name)]
+                ),
+                f"name",
+            ),
             cls.create(
                 unfinished_rule,
                 "unfinished",
-                ViolationType.SINGULAR,
+                SingularViolationType(),
                 name,
             ),
         ]

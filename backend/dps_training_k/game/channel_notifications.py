@@ -35,6 +35,7 @@ class ChannelEventTypes:
     SINGULAR_VIOLATION_EVENT = "singular.violation.event"
     DURATIONAL_VIOLATION_START_EVENT = "durational.violation.start.event"
     DURATIONAL_VIOLATION_END_EVENT = "durational.violation.end.event"
+    DURATIONAL_VIOLATION_UPDATE_EVENT = "durational.violation.update.event"
 
 
 def _notify_group(group_channel_name, event):
@@ -44,6 +45,10 @@ def _notify_group(group_channel_name, event):
     https://channels.readthedocs.io/en/stable/topics/channel_layers.html?highlight=periods#what-to-send-over-the-channel-layer
     """
     async_to_sync(get_channel_layer().group_send)(group_channel_name, event)
+
+
+async def _async_notify_group(group_channel_name, event):
+    await get_channel_layer().group_send(group_channel_name, event)
 
 
 class ChannelNotifier:
@@ -666,11 +671,11 @@ class ViolationDispatcher:
         return f"log_rules_{session_id}_log"
 
     @classmethod
-    def dispatch_durational_violation_started(
+    async def dispatch_durational_violation_started(
         cls,
         session_id,
-        template_name,
         rule_name,
+        template_name,
         violation_assignment,
         start_stamp,
         start_point,
@@ -680,14 +685,14 @@ class ViolationDispatcher:
             "type": ChannelEventTypes.DURATIONAL_VIOLATION_START_EVENT,
             "rule_name": rule_name,
             "template_name": template_name,
-            "violation_assignment": violation_assignment,
+            "violation_instance": violation_assignment,
             "start_stamp": start_stamp,
             "start_point": start_point,
         }
-        _notify_group(channel, event)
+        await _async_notify_group(channel, event)
 
     @classmethod
-    def dispatch_durational_violation_finished(
+    async def dispatch_durational_violation_finished(
         cls,
         session_id,
         rule_name,
@@ -700,19 +705,19 @@ class ViolationDispatcher:
     ):
         channel = cls.get_group_name(session_id)
         event = {
-            "type": ChannelEventTypes.DURATIONAL_VIOLATION_START_EVENT,
+            "type": ChannelEventTypes.DURATIONAL_VIOLATION_END_EVENT,
             "rule_name": rule_name,
             "template_name": template_name,
-            "violation_assignment": violation_assignment,
+            "violation_instance": violation_assignment,
             "start_stamp": start_stamp,
             "start_point": start_point,
             "past_end_stamp": past_end_stamp,
             "past_end_point": past_end_point,
         }
-        _notify_group(channel, event)
+        await _async_notify_group(channel, event)
 
     @classmethod
-    def dispatch_singular_violation(
+    async def dispatch_durational_violation_update(
         cls,
         session_id,
         rule_name,
@@ -723,11 +728,32 @@ class ViolationDispatcher:
     ):
         channel = cls.get_group_name(session_id)
         event = {
-            "type": ChannelEventTypes.DURATIONAL_VIOLATION_START_EVENT,
+            "type": ChannelEventTypes.DURATIONAL_VIOLATION_UPDATE_EVENT,
             "rule_name": rule_name,
             "template_name": template_name,
             "violation_assignment": violation_assignment,
             "time_stamp": time_stamp,
             "time_point": time_point,
         }
-        _notify_group(channel, event)
+        await _async_notify_group(channel, event)
+
+    @classmethod
+    async def dispatch_singular_violation(
+        cls,
+        session_id,
+        rule_name,
+        template_name,
+        violation_assignment,
+        time_stamp,
+        time_point,
+    ):
+        channel = cls.get_group_name(session_id)
+        event = {
+            "type": ChannelEventTypes.SINGULAR_VIOLATION_EVENT,
+            "rule_name": rule_name,
+            "template_name": template_name,
+            "violation_assignment": violation_assignment,
+            "time_stamp": time_stamp,
+            "time_point": time_point,
+        }
+        await _async_notify_group(channel, event)

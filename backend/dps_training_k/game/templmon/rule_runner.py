@@ -60,6 +60,7 @@ class RuleRunner:
 
     async def _write_log_entry(self, monpolified_log_entry: str):
         print(f"Received log entry: {monpolified_log_entry}")
+        monpolified_log_entry += "\n"
         await self.monpoly_started_event.wait()
         if self.monpoly.stdin:
             encoded = monpolified_log_entry.encode()
@@ -70,29 +71,41 @@ class RuleRunner:
 
     async def _launch_monpoly(self):
         """Has to be launched in a separate thread"""
-        self.monpoly = await asyncio.create_subprocess_exec(
+        args = [
             "monpoly",
             "-sig",
             self.log_rule.signature,
             "-formula",
             self.log_rule.rule_file_path,
             "-verbose",
-            "" if self.rewrite_allowed else "-no_rw",
+            "-nofilteremptytp",
+        ]
+        if not self.rewrite_allowed:
+            args.append("-no_rw")
+        self.monpoly = await asyncio.create_subprocess_exec(
+            *args,
             env=os.environ.copy(),
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
         tracker = (
-            DurationalViolationTracker
-            if self.log_rule.violation_type == ViolationType.DURATIONAL
-            else SingularViolationTracker
-        )(
-            self.free_variables,
-            ViolationDispatcher,
-            self.session_id,
-            self.log_rule.rule_name,
-            self.log_rule.template_name,
+            DurationalViolationTracker(
+                self.free_variables,
+                self.log_rule.same_violation_keys,
+                ViolationDispatcher,
+                self.session_id,
+                self.log_rule.rule_name,
+                self.log_rule.template_name,
+            )
+            if self.log_rule.violation_type.IS_DURATIONAL
+            else SingularViolationTracker(
+                self.free_variables,
+                ViolationDispatcher,
+                self.session_id,
+                self.log_rule.rule_name,
+                self.log_rule.template_name,
+            )
         )
         out_p = OutputParser(self.monpoly, tracker)
         asyncio.create_task(out_p.read_output())

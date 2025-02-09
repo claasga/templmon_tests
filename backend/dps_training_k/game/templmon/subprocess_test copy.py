@@ -19,11 +19,13 @@ tasks = []
 # @35 assigned_personnel(per_n_6, pat_n_2)
 # @37 assigned_personnel(per_n_7, pat_n_2)
 # @39 assigned_personnel(per_n_8, pat_n_2)"""
-log = """@70 assigned_personnel(hans, peter)
-@71 assigned_personnel(hans, peter)
-@72 assigned_personnel(hans, peter)
-@73 assigned_personnel(hans, peter)
-@74 assigned_personnel(hans, peter)
+
+log = """@10 patient_arrived(peter, string, string, string)
+@70 assigned_personnel(hans, peter)
+@71 assigned_personnel(hansi, peter)
+@72 assigned_personnel(hansii, peter)
+@73 assigned_personnel(hansiii, peter)
+@74 assigned_personnel(hansiiii, peter)
 """
 # Get the absolute path of the current directory
 base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -39,6 +41,8 @@ async def read_output(process):
 
 async def launch_task(*args):
     monpoly = await asyncio.create_subprocess_exec(
+        "stdbuf",
+        "-oL",
         *args,
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
@@ -55,24 +59,27 @@ async def send_input(subprocess, line):
 
 
 async def main():
-    for i in range(500):
+    for i in range(1):
         await asyncio.create_task(
             launch_task(
                 "monpoly",
                 "-sig",
                 os.path.join(base_dir, "kdps.sig"),
                 "-formula",
-                os.path.join(base_dir, "personnel_check copy.mfotl"),
+                os.path.join(
+                    "/home/claas/Desktop/BP/dps.training_k/backend/dps_training_k/game/templmon/log_rules/subprocess_test.mfotl"
+                ),
                 "-verbose",
             )
         )
 
     for line in log.split("\n"):
         for task in tasks:
+            print(f"Sent: {line}")
             await send_input(task, line + "\n")
-        await asyncio.sleep(1)  # might be turned off
 
-        print(f"Sent: {line}")
+        await asyncio.sleep(2)  # might be turned off
+
     await asyncio.sleep(1)
 
 

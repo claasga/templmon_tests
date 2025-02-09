@@ -448,10 +448,14 @@ class TrainerConsumer(AbstractConsumer):
         print("Singular violation event")
         print(event)
 
-    def durational_ciolation_start_event(self, event):
+    def durational_violation_start_event(self, event):
         print("Durational violation start event")
         print(event)
 
     def durational_violation_end_event(self, event):
         print("Durational violation end event")
+        print(event)
+
+    def durational_violation_update_event(self, event):
+        print("Durational violation update event")
         print(event)
