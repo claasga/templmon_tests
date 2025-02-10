@@ -36,7 +36,7 @@ class ResourceAssignmentTestCase(TestCase, TestUtilsMixin):
     @patch(
         "game.channel_notifications.MaterialInstanceDispatcher._notify_exercise_update"
     )
-    @patch("game.channel_notifications.MaterialInstanceDispatcher._notify_group")
+    @patch("game.channel_notifications._notify_group")
     def test_channel_notifications_being_send(
         self, _notify_group, _notify_exercise_update
     ):

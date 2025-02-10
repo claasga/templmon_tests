@@ -19,7 +19,7 @@ class ChannelNotifierTestCase(TestUtilsMixin, TestCase):
         self.activate_logging()
         self.activate_live_updates()
 
-    @patch.object(cn.ChannelNotifier, "_notify_group")
+    @patch("game.channel_notifications._notify_group")
     def test_action_dispatcher(self, notify_group_mock):
         action_instance = ActionInstanceFactory(patient_instance=PatientFactory())
         action_instance.current_state = ActionInstanceStateFactory(
@@ -30,7 +30,7 @@ class ChannelNotifierTestCase(TestUtilsMixin, TestCase):
 
         self.assertEqual(notify_group_mock.call_count, previous_function_calls + 1)
 
-    @patch.object(cn.ChannelNotifier, "_notify_group")
+    @patch("game.channel_notifications._notify_group")
     def test_patient_dispatcher(self, notify_group_mock):
         patient_instance = PatientFactory()
         previous_function_calls = notify_group_mock.call_count

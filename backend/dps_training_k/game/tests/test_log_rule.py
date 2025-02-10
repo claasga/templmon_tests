@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 
 class LogRuleTestCase(TestUtilsMixin, TestCase):
-    @patch("game.templmon.log_rule.LogRuleRunner.receive_log_entry")
+    @patch("game.templmon.rule_runner.RuleRunner.receive_log_entry")
     def test_creation(self, received_log):
         test_rule_str = """    (personnel_count <- CNT personnel_id;patient_id 
             (NOT unassigned_personnel(personnel_id)) 
