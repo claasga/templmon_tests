@@ -37,6 +37,7 @@ services:
       - redis
     env_file:
       - .env.${RUN_CONFIG}
+      - .env.process_django
     environment:
       - RUN_MIGRATIONS=1 # only django should run migrations
     volumes:
@@ -57,6 +58,7 @@ services:
     container_name: K-dPS-celeryworker
     env_file:
       - .env.${RUN_CONFIG}
+      - .env.process_worker
     command: /start-celeryworker
     depends_on:
       - django
@@ -70,6 +72,7 @@ services:
     container_name: K-dPS-celerybeat
     env_file:
       - .env.${RUN_CONFIG}
+      - .env.process_beat
     command: /start-celerybeat
     depends_on:
       - django

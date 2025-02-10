@@ -89,9 +89,7 @@ class DurationalViolationTracker(ViolationTracker):
     async def update_violations(self, timestamp, timepoint, violations: list[dict]):
         """Assumes that violations are unique. For MonPoly they are"""
         unfinished_keys = list(self.current_unfinished_violations.keys())
-        print("entered update violations")
         if len(violations) == 0:
-            print("triggered empty list")
 
             await self._remove_violations(timestamp, timepoint, unfinished_keys)
             return
@@ -151,7 +149,6 @@ class OutputParser:
         def get_fullfilling_assignments(assignments_str: str):
             assignments = []
             i = 0
-            print("Start mapping assignments")
             while i < len(assignments_str):
                 if assignments_str[i] == "(":
                     j = i + 1
@@ -164,12 +161,10 @@ class OutputParser:
                         assignments.append(asgnm)
                     i = j
                 i += 1
-            print("Finished mapping assignments with " + str(assignments))
             if not assignments:
                 return assignments
             assignment_dicts = []
             for assignment in assignments:
-                print(assignment)
 
                 i = 0
                 assignment_dict = {}
@@ -191,13 +186,9 @@ class OutputParser:
                             inside_string = not inside_string
                         i += 1
                     assignment_dict[free_variable] = assignment[beginning_i:i]
-                    print(
-                        f"Free variable: {free_variable}, Value: {assignment_dict[free_variable]}"
-                    )
                     i += len(self.value_seperator)
                 if i < len(assignment):
                     raise Exception("Assignment contains more than the free variables")
-                print(assignment_dict)
                 assignment_dicts.append(assignment_dict)
             return assignment_dicts
 
@@ -221,8 +212,6 @@ class OutputParser:
             timestamp = float(parts[0])
             timepoint = int(re.search(r"\d+", parts[1]).group()) / 2
             fullfilling_assignments = get_fullfilling_assignments(parts[2])
-            for assignment in fullfilling_assignments:
-                print(f'Processed output : {timestamp}, {timepoint}, "{assignment}"')
             await self.output_receiver.update_violations(
                 timestamp, timepoint, fullfilling_assignments
             )

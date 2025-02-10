@@ -94,7 +94,6 @@ class LogEntry(models.Model):
     def is_valid(self):
         if self.timestamp and self.local_id and not self.is_dirty:
             return True
-        # print("not valid")
         return False
 
     def set_dirty(self, new_dirty):
@@ -118,6 +117,7 @@ class LogEntry(models.Model):
             self.TYPES.TRIAGED: "wurde triagiert",
             self.TYPES.UPDATED: "wurde aktualisiert",
         }
+        print(f"Type is: {self.type}")
         if self.category == self.CATEGORIES.ACTION:
             message += f"{(content['name'])} {type_to_submessage[self.type]}"
             message += (

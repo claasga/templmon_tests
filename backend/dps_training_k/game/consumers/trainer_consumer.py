@@ -201,7 +201,7 @@ class TrainerConsumer(AbstractConsumer):
         self.subscribe(ViolationDispatcher.get_group_name(self.exercise.frontend_id))
         content = {
             "action": "selected_action_id",
-            "timeframe": 120,
+            "timeframe": 2,
             "vital_parameters": {
                 "circulation": "Herzfreq: 83 /min|peripher kräftig tastbar|RR: 143/083"
             },
@@ -212,8 +212,12 @@ class TrainerConsumer(AbstractConsumer):
         self.handle_add_rule(
             self.exercise, "symptom-combination", "ultraschall_rule", content
         )
-        content = {"operator": ">=", "personnel_count": 2}
-        self.handle_add_rule(self.exercise, "personnel_check", "two_rule", content)
+        # content = {"operator": ">=", "personnel_count": 2}
+        # self.handle_add_rule(self.exercise, "personnel_check", "beq_two_rule", content)
+
+    #
+    # content = {"operator": "<", "personnel_count": 2}
+    # self.handle_add_rule(self.exercise, "personnel_check", "less_two_rule", content)
 
     def handle_end_exercise(self, exercise):
         exercise.update_state(Exercise.StateTypes.FINISHED)
@@ -437,8 +441,8 @@ class TrainerConsumer(AbstractConsumer):
     # Events triggered internally by channel notifications
     # ------------------------------------------------------------------------------------------------------------------------------------------------
     def log_update_event(self, event):
+        return
         log_entry = LogEntry.objects.get(id=event["log_entry_id"])
-
         self.send_event(
             self.TrainerOutgoingMessageTypes.LOG_UPDATE,
             logEntries=[LogEntrySerializer(log_entry).data],

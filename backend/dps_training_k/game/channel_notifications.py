@@ -1,5 +1,6 @@
 import logging
 import asyncio
+import os
 
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
@@ -7,10 +8,8 @@ from channels.layers import get_channel_layer
 import game.models as models  # needed to avoid circular imports
 import template.models as template
 
-import datetime
-import threading
-import time
 from collections import defaultdict
+from .redis_comm import publish_to_process
 
 """
 This package is responsible to decide when to notify which consumers.
@@ -18,6 +17,8 @@ This also implies that it should be as transparent as possible to the models it 
 Events must be sent as strings, thus objects are passed by ids.
 Sending events is done by the celery worker.
 """
+PROCESS_ID = int(os.environ.get("PROCESS_ID"))
+PARTNER_PROCESS_ID = int(os.environ.get("PARTNER_PROCESS_ID"))
 
 
 class ChannelEventTypes:
@@ -192,17 +193,18 @@ class ActionInstanceDispatcher(ChannelNotifier):
 
     @classmethod
     def create_trainer_log(cls, applied_action, changes, is_updated):
+        print("Action Instance: creating trainer log")
         if changes and "historic_patient_state" in changes:
             return
         if applied_action == models.ActionInstanceStateNames.PLANNED:
             return
 
-        message = None
         category = models.LogEntry.CATEGORIES.ACTION
         type = None
         content = {}
         content["name"] = applied_action.name
         send_personnel_and_material = False
+        print(f"The state name is: {applied_action.state_name}")
         if applied_action.state_name == models.ActionInstanceStateNames.IN_PROGRESS:
             type = models.LogEntry.TYPES.STARTED
             send_personnel_and_material = True
@@ -215,7 +217,7 @@ class ActionInstanceDispatcher(ChannelNotifier):
                 }
                 content["produced"] = str(named_produced_resources)
             if applied_action.template.category == template.Action.Category.EXAMINATION:
-                content["examinitaion_result"] = applied_action.result
+                content["examination_result"] = applied_action.result
         elif (
             applied_action.state_name == models.ActionInstanceStateNames.CANCELED
             and applied_action.states.filter(
@@ -227,7 +229,7 @@ class ActionInstanceDispatcher(ChannelNotifier):
             type = models.LogEntry.TYPES.IN_EFFECT
         elif applied_action.state_name == models.ActionInstanceStateNames.EXPIRED:
             type = models.LogEntry.TYPES.EXPIRED
-        if message and send_personnel_and_material:
+        if send_personnel_and_material:
             log_entry = models.LogEntry.objects.create(
                 exercise=applied_action.exercise,
                 category=category,
@@ -246,8 +248,9 @@ class ActionInstanceDispatcher(ChannelNotifier):
             )
             log_entry.materials.add(*material_list)
             log_entry.is_dirty = False
-            log_entry.save(update_fields=["is_dirty"])
-        elif message:
+            log_entry.save()
+            print("change propagated")
+        else:
             log_entry = models.LogEntry.objects.create(
                 exercise=applied_action.exercise,
                 category=category,
@@ -330,6 +333,12 @@ class ExerciseDispatcher(ChannelNotifier):
         _notify_group(channel, event)
 
 
+def redis_publish_obj(data):
+    exercise_frontend_id = data.get("exercise_frontend_id")
+    obj = models.LogEntry.objects.get(id=data.get("obj_id"))
+    LogEntryDispatcher._publish_obj(obj, exercise_frontend_id)
+
+
 class Observable:
     _exercise_subscribers = defaultdict(set)
 
@@ -355,7 +364,19 @@ class Observable:
         if not obj.is_valid():
             return
 
-        print("Publishing obj")
+        print(f"Current prozess id: {PROCESS_ID}")
+        if PROCESS_ID == 1:
+            print("calling other process for publishing")
+            publish_to_process(
+                PARTNER_PROCESS_ID,
+                {"obj_id": obj.id, "exercise_frontend_id": exercise_frontend_id},
+            )
+            print("other process called")
+            return
+
+        print(
+            f"Publishing obj for frontend_id {exercise_frontend_id} and subscribers: {cls._exercise_subscribers}"
+        )
         if exercise_frontend_id in cls._exercise_subscribers:
             print("Exercise in subscribers")
             for subscriber in cls._exercise_subscribers[exercise_frontend_id]:
@@ -380,6 +401,7 @@ class LogEntryDispatcher(Observable, ChannelNotifier):
     @classmethod
     def dispatch_event(cls, log_entry, changes, is_updated):
         if log_entry.is_valid():
+            # print(f" While dispatching: {log_entry.type}")
             cls._notify_log_update_event(log_entry)
 
     @classmethod

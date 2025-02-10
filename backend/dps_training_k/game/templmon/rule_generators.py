@@ -220,7 +220,6 @@ AND
             AND 
                 personnel_count >= 2)
 """
-        print(rule)
         return cls.create(
             rule,
             "personnel_prioritization",
@@ -276,7 +275,7 @@ OR
             ONCE[0,*) {patient_arrived.mfotl()}) 
         AND 
             (EXISTS personnel_count. 
-                    ((personnel_count <- CNT {RP.PERSONNEL};{RP.PATIENT} 
+                    ((personnel_count <- CNT {RP.PERSONNEL.name};{RP.PATIENT.name} 
                             ((NOT {unassigned_personnel.mfotl()}) 
                         SINCE[0,*) 
                             {assigned_personnel.mfotl()})) 
@@ -481,20 +480,45 @@ AND
                 SingularViolationType(),
                 name,
             ),
+            # cls.create(
+            #    to_late_rule,
+            #    "to_late",
+            #    DurationalViolationType(
+            #        [patient_arrived.get_variable(RP.PATIENT.name)]
+            #    ),
+            #    f"name",
+            # ),
+            # cls.create(
+            #    unfinished_rule,
+            #    "unfinished",
+            #    SingularViolationType(),
+            #    name,
+            # ),
+        ]
+
+
+class TriageGoalRule(LogRule):
+    @classmethod
+    def generate_fullfillment(cls, patient_id, target_time, target_level):
+
+        pass
+
+    def generate_violation(cls, patient_id, target_time, target_level):
+        rule_str = f"""(ONCE({target_time},*) patient_arrived("{patient_id}", location, start_triage, wound)) #zeitlimit vom nutzer
+AND
+    (NOT PREV(0,*) ONCE({target_time},*) patient_arrived("{patient_id}", location, start_triage, wound)) #siehe oben
+AND
+    NOT
+            (NOT EXISTS level. triage("{patient_id}", level)
+        SINCE(0,*)
+                ((EXISTS l, w. patient_arrived("{patient_id}", l, "{target_level}", w))
+            OR
+                triage("{patient_id}", "{target_level}")))
+"""
+        return [
             cls.create(
-                to_late_rule,
-                "to_late",
-                DurationalViolationType(
-                    [patient_arrived.get_variable(RP.PATIENT.name)]
-                ),
-                f"name",
-            ),
-            cls.create(
-                unfinished_rule,
-                "unfinished",
-                SingularViolationType(),
-                name,
-            ),
+                rule_str,
+            )
         ]
 
 

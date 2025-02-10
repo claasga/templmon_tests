@@ -34,6 +34,7 @@ class LogTransformer:
             if log_entry.type == l_types.UPDATED:
                 return MonpolyLogEntry.CHANGED_STATE
         elif log_entry.category == l_categories.ACTION:
+            print(f"the content is: {log_entry.content}")
             if (
                 log_entry.type == l_types.FINISHED
                 and "examination_result" in log_entry.content
@@ -57,6 +58,7 @@ class LogTransformer:
     @classmethod
     def transform(cls, log_entry: le.LogEntry):
         log_type = cls.determine_log_type(log_entry)
+        print(f"log type is: {log_type}")
         timestamp = cls._generate_timestamp(log_entry)
         log_str = f"@{timestamp} "
 
