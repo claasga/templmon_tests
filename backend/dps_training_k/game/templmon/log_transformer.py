@@ -14,6 +14,7 @@ class MonpolyLogEntry:
     EXAMINATION_RESULT = "examination_result"
     ACTION_STARTED = "action_started"
     ACTION_CANCELED = "action_canceled"
+    TRIAGED = "triage"
 
 
 class LogTransformer:
@@ -31,10 +32,11 @@ class LogTransformer:
         elif log_entry.category == l_categories.PATIENT:
             if log_entry.type == l_types.ARRIVED:
                 return MonpolyLogEntry.PATIENT_ARRIVED
-            if log_entry.type == l_types.UPDATED:
+            elif log_entry.type == l_types.UPDATED:
                 return MonpolyLogEntry.CHANGED_STATE
+            elif log_entry.type == l_types.TRIAGED:
+                return MonpolyLogEntry.TRIAGED
         elif log_entry.category == l_categories.ACTION:
-            print(f"the content is: {log_entry.content}")
             if (
                 log_entry.type == l_types.FINISHED
                 and "examination_result" in log_entry.content
@@ -96,6 +98,10 @@ class LogTransformer:
             action = log_entry.content.get("name")
             result = log_entry.content.get("examination_result")
             log_str += ExaminationResult.log(patient_id, action, result)
+        elif log_type == MonpolyLogEntry.TRIAGED:
+            patient_id = log_entry.patient_instance.pk
+            level = log_entry.content.get("level")
+            log_str += Triaged.log(patient_id, level)
         else:
             log_str += f"unknown_log_type({log_entry.pk}, {log_entry.type}, {log_entry.category})"
 

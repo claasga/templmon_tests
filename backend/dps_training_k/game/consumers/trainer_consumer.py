@@ -200,24 +200,23 @@ class TrainerConsumer(AbstractConsumer):
         self.subscribe(LogEntryDispatcher.get_group_name(self.exercise))
         self.subscribe(ViolationDispatcher.get_group_name(self.exercise.frontend_id))
         content = {
-            "action": "selected_action_id",
+            "action": "i.V. Zugang",
             "timeframe": 2,
             "vital_parameters": {
                 "circulation": "Herzfreq: 83 /min|peripher kräftig tastbar|RR: 143/083"
             },
             "examination_results": {
-                "Ultraschall Abdomen": "Abdomen; Normalbefund; keine pathologischen Veränderungen; Thorax: keine Ergüsse sichtbar"
+                "Ultraschall_Abdomen": "Ultraschall:_Abdomen__Normalbefund__keine_pathologischen_Veraenderungen__Thorax:_keine_Erguesse_sichtbar"
             },
         }
         self.handle_add_rule(
             self.exercise, "symptom-combination", "ultraschall_rule", content
         )
-        # content = {"operator": ">=", "personnel_count": 2}
-        # self.handle_add_rule(self.exercise, "personnel_check", "beq_two_rule", content)
+        content = {"operator": ">=", "personnel_count": 2}
+        self.handle_add_rule(self.exercise, "personnel_check", "beq_two_rule", content)
 
-    #
-    # content = {"operator": "<", "personnel_count": 2}
-    # self.handle_add_rule(self.exercise, "personnel_check", "less_two_rule", content)
+        content = {"operator": "<", "personnel_count": 2}
+        self.handle_add_rule(self.exercise, "personnel_check", "less_two_rule", content)
 
     def handle_end_exercise(self, exercise):
         exercise.update_state(Exercise.StateTypes.FINISHED)

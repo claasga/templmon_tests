@@ -184,17 +184,13 @@ AND
         SINCE[0,*]
             {changed_state_1.mfotl()})
     AND
-        4.0 < {selected_parameter_1} 
-    AND
-        {selected_parameter_1} < 8.0
+        {selected_parameter_1} = {sm.LogType._monpolify_string(value_p1)}
 AND
             ((NOT EXISTS {c_changed_state_2.bind([RP.PATIENT.name], False)}. {c_changed_state_2.mfotl()})
         SINCE[0,*]
             {changed_state_2.mfotl()})
     AND
-        4.0 >= {selected_parameter_2}
-    AND
-        {selected_parameter_2} >= 0.0
+        {selected_parameter_2} = {sm.LogType._monpolify_string(value_p2)}
     AND
         {changed_state_2.get_variable(RP.DEAD.name)} = "FALSE"
 AND
@@ -218,7 +214,7 @@ AND
                     SINCE[0,*] 
                     {assigned_personnel_1.mfotl()})
             AND 
-                personnel_count >= 2)
+                personnel_count >= {personnel_count_p1})
 """
         return cls.create(
             rule,
@@ -480,30 +476,43 @@ AND
                 SingularViolationType(),
                 name,
             ),
-            # cls.create(
-            #    to_late_rule,
-            #    "to_late",
-            #    DurationalViolationType(
-            #        [patient_arrived.get_variable(RP.PATIENT.name)]
-            #    ),
-            #    f"name",
-            # ),
-            # cls.create(
-            #    unfinished_rule,
-            #    "unfinished",
-            #    SingularViolationType(),
-            #    name,
-            # ),
+            cls.create(
+                to_late_rule,
+                "to_late",
+                DurationalViolationType(
+                    [patient_arrived.get_variable(RP.PATIENT.name)]
+                ),
+                f"name",
+            ),
+            cls.create(
+                unfinished_rule,
+                "unfinished",
+                SingularViolationType(),
+                name,
+            ),
         ]
 
 
 class TriageGoalRule(LogRule):
     @classmethod
-    def generate_fullfillment(cls, patient_id, target_time, target_level):
+    def generate_fullfillment(cls, name, patient_id, target_time, target_level):
+        rule_str = f"""(ONCE({target_time},*) patient_arrived("{patient_id}", location, start_triage, wound)) #zeitlimit vom nutzer
+AND
+    (NOT PREV(0,*) ONCE({target_time},*) patient_arrived("{patient_id}", location, start_triage, wound)) #siehe oben
+AND
+        (NOT EXISTS level. triage("{patient_id}", level)
+    SINCE(0,*)
+            (EXISTS l, w. patient_arrived("{patient_id}", l, "{target_level}", w))
+        OR
+            triage("{patient_id}", "{target_level}"))"""
+        return [
+            cls.create(
+                rule_str, "triage_personal_fullfillment", SingularViolationType(), name
+            )
+        ]
 
-        pass
-
-    def generate_violation(cls, patient_id, target_time, target_level):
+    @classmethod
+    def generate_violation(cls, name, patient_id, target_time, target_level):
         rule_str = f"""(ONCE({target_time},*) patient_arrived("{patient_id}", location, start_triage, wound)) #zeitlimit vom nutzer
 AND
     (NOT PREV(0,*) ONCE({target_time},*) patient_arrived("{patient_id}", location, start_triage, wound)) #siehe oben
@@ -518,20 +527,102 @@ AND
         return [
             cls.create(
                 rule_str,
+                "triage_personal_violation",
+                SingularViolationType(),
+                name,
             )
         ]
 
 
-# from ..channel_notifications import LogEntryDispatcher
-#
-# test_rule_str = """    (personnel_count <- CNT personnel_id;patient_id
-#            (NOT unassigned_personnel(personnel_id))
-#        SINCE[0,*]
-#            assigned_personnel(personnel_id, patient_id))
-# AND
-#    (personnel_count >= 4)"""
-# test_rule = LogRule.create(test_rule_str, "test_rule")
-# log_rule_runner = LogRuleRunner(None, LogEntryDispatcher, test_rule)
+class AlivenessChecker(LogRule):
+    @classmethod
+    def generate_fullfillment(cls, name):
+        rule_str = f"""    NOT EXISTS circulation, breathing. changed_state(patient_id, circulation, breathing, "TRUE")
+SINCE[0,*]
+    EXISTS start_location, start_triage, injury. patient_arrived(patient_id, start_location, start_triage, injury)
+    """
+        return [
+            cls.create(rule_str, "alive", DurationalViolationType(["patient_id"]), name)
+        ]
+
+    @classmethod
+    def generate_violation(cls, name):
+        rule_str = 'EXISTS circulation, breathing. changed_state(patient_id, circulation, breathing, "TRUE")\n'
+        return [cls.create(rule_str, "dead", SingularViolationType(), name)]
+
+
+class InteractedChecker(LogRule):
+    @classmethod
+    def generate_fullfillment(cls, name):
+        rule_str = """        (EXISTS level. triage(patient_id, level)) 
+    OR 
+        (EXISTS personnel_id. assigned_personnel(personnel_id, patient_id))
+    OR
+        (EXISTS origin, target. patient_relocated(patient_id, origin, target))
+    OR 
+        (EXISTS action_id. action_started(patient_id, action_id))
+        """
+        return [cls.create(rule_str, "interacted", SingularViolationType(), name)]
+
+    @classmethod
+    def generate_violation(cls, name):
+        rule_str = """#Enable -no_rw
+    NOT
+            ((EXISTS level. triage(patient_id, level)) 
+        OR 
+            (EXISTS personnel_id. assigned_personnel(personnel_id, patient_id))
+        OR
+            (EXISTS origin, target. patient_relocated(patient_id, origin, target))
+        OR 
+            (EXISTS action_id. action_started(patient_id, action_id)))
+SINCE[0,*)
+    EXISTS start_location, start_triage, injury. patient_arrived(patient_id, start_location, start_triage, injury)
+    """
+        return [
+            cls.create(
+                rule_str, "uninteracted", DurationalViolationType(["patient_id"]), name
+            )
+        ]
+
+
+class TriagedChecker(LogRule):
+    @classmethod
+    def generate_fullfillment(cls, name):
+        rule_str = """    NOT (EXISTS level. triage(patient_id, level))
+SINCE[0,*)
+            ((EXISTS start_location, start_triage, injury. patient_arrived(patient_id, start_location, start_triage, injury)
+        AND
+            NOT start_triage = "Gray")
+    OR
+            (EXISTS level. triage(patient_id, level) 
+        AND 
+            NOT level = "Gray"))
+        """
+        return [cls.create(rule_str, "triaged", SingularViolationType(), name)]
+
+    @classmethod
+    def generate_violation(cls, name):
+        rule_str = """    NOT (EXISTS level. triage(patient_id, level))
+SINCE[0,*)
+            ((EXISTS start_location, start_triage, injury. patient_arrived(patient_id, start_location, start_triage, injury) 
+        AND 
+            start_triage = "Gray") 
+    OR 
+        triage(patient_id, "Gray"))
+        """
+        return [
+            cls.create(
+                rule_str, "untriaged", DurationalViolationType(["patient_id"]), name
+            )
+        ]
+
+
+class BerlinAlgorithm(LogRule):
+    @classmethod
+    def generate(cls, name):
+        pass
+
+
 if __name__ == "__main__":
     RP = sm.RuleProperty
     # PersonnelCheckRule.generate(operator="<")
@@ -544,10 +635,3 @@ if __name__ == "__main__":
         {RP.CIRCULATION.name: 10.0},
         {"selected_examination_id": "bad"},
     )
-# String vs int bei 0 in monpoly
-# To Late:
-# 1. ~~patienten_id wird gebunden in unterem part~~
-# 2. ~~string gebundene variablen werden nochmals gebunden~~
-# 3. ~~klammerung ums or fehlt~~
-# 4. ~~c_version wird nicht verwendet~~
-# 5. Examination results werden nicht getestet

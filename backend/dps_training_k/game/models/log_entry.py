@@ -117,7 +117,6 @@ class LogEntry(models.Model):
             self.TYPES.TRIAGED: "wurde triagiert",
             self.TYPES.UPDATED: "wurde aktualisiert",
         }
-        print(f"Type is: {self.type}")
         if self.category == self.CATEGORIES.ACTION:
             message += f"{(content['name'])} {type_to_submessage[self.type]}"
             message += (

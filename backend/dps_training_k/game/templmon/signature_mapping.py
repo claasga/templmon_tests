@@ -246,6 +246,15 @@ class ActionFinished(LogType):
         return cls._log([patient, action])
 
 
+class Triaged(LogType):
+    _BASE_VARIABLES = [RuleProperty.PATIENT, RuleProperty.TRIAGE]
+    MONPOLY_NAME = "triage"
+
+    @classmethod
+    def log(cls, patient, triage):
+        return cls._log([patient, triage])
+
+
 def generate_monpoly_signature(file_path):
     """:file_path: exclude the type of file, e.g. /path/to/file"""
 

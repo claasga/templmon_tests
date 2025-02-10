@@ -124,9 +124,6 @@ class RuleRunner:
         end = output.find(")", start)
         free_variables = output[start:end]
         free_variables = free_variables.split(",")
-        print("Extracted environment variables:")
-        for free_variable in free_variables:
-            print(free_variable)
         return free_variables
 
     def _environment_infos(self):

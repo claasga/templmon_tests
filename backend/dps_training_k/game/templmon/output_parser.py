@@ -61,7 +61,6 @@ class DurationalViolationTracker(ViolationTracker):
             )
 
     async def _remove_violations(self, timestamp, timepoint, filtered_violations):
-        print(f"entered remove violations with {filtered_violations}")
         for violation in filtered_violations:
             start_stamp, start_point = self.current_unfinished_violations.pop(violation)
             await self._violation_listener.dispatch_durational_violation_finished(
@@ -202,8 +201,7 @@ class OutputParser:
             if decoded_line[0] != "@":
                 continue
 
-            print("Received output:")
-            print(decoded_line)
+            print(f"Received output: {decoded_line}")
             decoded_line = decoded_line[1:]
             parts = decoded_line.split(self.matches_seperator)
             if len(parts) != 3:

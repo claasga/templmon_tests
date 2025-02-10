@@ -193,7 +193,6 @@ class ActionInstanceDispatcher(ChannelNotifier):
 
     @classmethod
     def create_trainer_log(cls, applied_action, changes, is_updated):
-        print("Action Instance: creating trainer log")
         if changes and "historic_patient_state" in changes:
             return
         if applied_action == models.ActionInstanceStateNames.PLANNED:
@@ -204,7 +203,6 @@ class ActionInstanceDispatcher(ChannelNotifier):
         content = {}
         content["name"] = applied_action.name
         send_personnel_and_material = False
-        print(f"The state name is: {applied_action.state_name}")
         if applied_action.state_name == models.ActionInstanceStateNames.IN_PROGRESS:
             type = models.LogEntry.TYPES.STARTED
             send_personnel_and_material = True
@@ -249,7 +247,6 @@ class ActionInstanceDispatcher(ChannelNotifier):
             log_entry.materials.add(*material_list)
             log_entry.is_dirty = False
             log_entry.save()
-            print("change propagated")
         else:
             log_entry = models.LogEntry.objects.create(
                 exercise=applied_action.exercise,
@@ -364,21 +361,13 @@ class Observable:
         if not obj.is_valid():
             return
 
-        print(f"Current prozess id: {PROCESS_ID}")
         if PROCESS_ID == 1:
-            print("calling other process for publishing")
             publish_to_process(
                 PARTNER_PROCESS_ID,
                 {"obj_id": obj.id, "exercise_frontend_id": exercise_frontend_id},
             )
-            print("other process called")
             return
-
-        print(
-            f"Publishing obj for frontend_id {exercise_frontend_id} and subscribers: {cls._exercise_subscribers}"
-        )
         if exercise_frontend_id in cls._exercise_subscribers:
-            print("Exercise in subscribers")
             for subscriber in cls._exercise_subscribers[exercise_frontend_id]:
                 subscriber.receive_log_entry(obj)
 
@@ -401,7 +390,6 @@ class LogEntryDispatcher(Observable, ChannelNotifier):
     @classmethod
     def dispatch_event(cls, log_entry, changes, is_updated):
         if log_entry.is_valid():
-            # print(f" While dispatching: {log_entry.type}")
             cls._notify_log_update_event(log_entry)
 
     @classmethod
