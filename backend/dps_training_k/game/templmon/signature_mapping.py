@@ -269,6 +269,7 @@ def generate_monpoly_signature(file_path):
         for subclass in subclasses:
             f.write(subclass.monpoly_representation() + "\n")
         f.write("unknown_log_type(int, string, string)\n")
+        f.write("commit()\n")
 
 
 if __name__ == "__main__":

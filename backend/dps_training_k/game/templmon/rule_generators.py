@@ -482,7 +482,7 @@ AND
                 DurationalViolationType(
                     [patient_arrived.get_variable(RP.PATIENT.name)]
                 ),
-                f"name",
+                name,
             ),
             cls.create(
                 unfinished_rule,

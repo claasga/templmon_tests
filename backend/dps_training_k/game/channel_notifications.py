@@ -689,6 +689,7 @@ class ViolationDispatcher:
         violation_assignment,
         start_stamp,
         start_point,
+        input_type,
     ):
         channel = cls.get_group_name(session_id)
         event = {
@@ -698,6 +699,7 @@ class ViolationDispatcher:
             "violation_instance": violation_assignment,
             "start_stamp": start_stamp,
             "start_point": start_point,
+            "input_type": input_type,
         }
         await _async_notify_group(channel, event)
 
@@ -712,6 +714,7 @@ class ViolationDispatcher:
         start_point,
         past_end_stamp,
         past_end_point,
+        input_type,
     ):
         channel = cls.get_group_name(session_id)
         event = {
@@ -723,6 +726,7 @@ class ViolationDispatcher:
             "start_point": start_point,
             "past_end_stamp": past_end_stamp,
             "past_end_point": past_end_point,
+            "input_type": input_type,
         }
         await _async_notify_group(channel, event)
 
@@ -735,6 +739,7 @@ class ViolationDispatcher:
         violation_assignment,
         time_stamp,
         time_point,
+        input_type,
     ):
         channel = cls.get_group_name(session_id)
         event = {
@@ -744,6 +749,7 @@ class ViolationDispatcher:
             "violation_assignment": violation_assignment,
             "time_stamp": time_stamp,
             "time_point": time_point,
+            "input_type": input_type,
         }
         await _async_notify_group(channel, event)
 
@@ -756,6 +762,7 @@ class ViolationDispatcher:
         violation_assignment,
         time_stamp,
         time_point,
+        input_type,
     ):
         channel = cls.get_group_name(session_id)
         event = {
@@ -765,5 +772,6 @@ class ViolationDispatcher:
             "violation_assignment": violation_assignment,
             "time_stamp": time_stamp,
             "time_point": time_point,
+            "input_type": input_type,
         }
         await _async_notify_group(channel, event)

@@ -15,6 +15,7 @@ class MonpolyLogEntry:
     ACTION_STARTED = "action_started"
     ACTION_CANCELED = "action_canceled"
     TRIAGED = "triage"
+    COMMIT = "commit"
 
 
 class LogTransformer:
@@ -60,7 +61,6 @@ class LogTransformer:
     @classmethod
     def transform(cls, log_entry: le.LogEntry):
         log_type = cls.determine_log_type(log_entry)
-        print(f"log type is: {log_type}")
         timestamp = cls._generate_timestamp(log_entry)
         log_str = f"@{timestamp} "
 
@@ -106,3 +106,7 @@ class LogTransformer:
             log_str += f"unknown_log_type({log_entry.pk}, {log_entry.type}, {log_entry.category})"
 
         return log_str
+
+    @classmethod
+    def generate_commit(cls, transformed_log_entry: str):
+        return transformed_log_entry[: transformed_log_entry.find(" ")] + " commit()"

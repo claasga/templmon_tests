@@ -1,6 +1,9 @@
 import re
 import asyncio
 
+if __name__ != "__main__":
+    from .log_transformer import MonpolyLogEntry
+
 
 class ViolationTracker:
     def __init__(self, keys, violation_listener, session_id, rule_name, template_name):
@@ -18,7 +21,9 @@ class ViolationTracker:
 
 
 class SingularViolationTracker(ViolationTracker):
-    async def update_violations(self, timestamp, timepoint, violations: list[dict]):
+    async def update_violations(
+        self, timestamp, timepoint, violations: list[dict], input_type
+    ):
         for violation in violations:
             await self._violation_listener.dispatch_singular_violation(
                 self._session_id,
@@ -27,6 +32,7 @@ class SingularViolationTracker(ViolationTracker):
                 dict(zip(self._keys, violation)),
                 timestamp,
                 timepoint,
+                input_type,
             )
 
 
@@ -48,7 +54,9 @@ class DurationalViolationTracker(ViolationTracker):
             )
         self.same_violation_keys = same_violation_keys
 
-    async def _add_violations(self, timestamp, timepoint, filtered_violations):
+    async def _add_violations(
+        self, timestamp, timepoint, filtered_violations, input_type
+    ):
         for violation in filtered_violations:
             self.current_unfinished_violations[violation] = (timestamp, timepoint)
             await self._violation_listener.dispatch_durational_violation_started(
@@ -58,9 +66,12 @@ class DurationalViolationTracker(ViolationTracker):
                 dict(zip(self.same_violation_keys, violation)),
                 timestamp,
                 timepoint,
+                input_type,
             )
 
-    async def _remove_violations(self, timestamp, timepoint, filtered_violations):
+    async def _remove_violations(
+        self, timestamp, timepoint, filtered_violations, input_type
+    ):
         for violation in filtered_violations:
             start_stamp, start_point = self.current_unfinished_violations.pop(violation)
             await self._violation_listener.dispatch_durational_violation_finished(
@@ -72,9 +83,10 @@ class DurationalViolationTracker(ViolationTracker):
                 start_point,
                 timestamp,
                 timepoint,
+                input_type,
             )
 
-    async def _change_violations(self, timestamp, timepoint, violations):
+    async def _change_violations(self, timestamp, timepoint, violations, input_type):
         for violation in violations:
             await self._violation_listener.dispatch_durational_violation_update(
                 self._session_id,
@@ -83,14 +95,19 @@ class DurationalViolationTracker(ViolationTracker):
                 dict(zip(self._keys, violation)),
                 timestamp,
                 timepoint,
+                input_type,
             )
 
-    async def update_violations(self, timestamp, timepoint, violations: list[dict]):
+    async def update_violations(
+        self, timestamp, timepoint, violations: list[dict], input_type
+    ):
         """Assumes that violations are unique. For MonPoly they are"""
         unfinished_keys = list(self.current_unfinished_violations.keys())
         if len(violations) == 0:
 
-            await self._remove_violations(timestamp, timepoint, unfinished_keys)
+            await self._remove_violations(
+                timestamp, timepoint, unfinished_keys, input_type
+            )
             return
 
         violations_filtered = [
@@ -131,18 +148,26 @@ class DurationalViolationTracker(ViolationTracker):
             elif not new_violation or new_violation > unfinished_violation:
                 violations_to_remove.append(unfinished_violation)
                 violations_comparable.insert(0, new_violation)
-        await self._add_violations(timestamp, timepoint, violations_to_add)
-        await self._remove_violations(timestamp, timepoint, violations_to_remove)
-        await self._change_violations(timestamp, timepoint, violations_to_change)
+        await self._add_violations(timestamp, timepoint, violations_to_add, input_type)
+        await self._remove_violations(
+            timestamp, timepoint, violations_to_remove, input_type
+        )
+        await self._change_violations(
+            timestamp, timepoint, violations_to_change, input_type
+        )
 
 
 class OutputParser:
-    def __init__(self, process, output_receiver: ViolationTracker):
+    def __init__(
+        self, process, output_receiver: ViolationTracker, pending_inputs_owner
+    ):
         self.process = process
         self.output_receiver = output_receiver
         self.matches_seperator = " ("
         self.value_seperator = ","
         self.finished_reading_process = asyncio.Event()
+        self.pending_inputs_owner = pending_inputs_owner
+        self.commit_count = 0
 
     async def read_output(self):
         def get_fullfilling_assignments(assignments_str: str):
@@ -201,17 +226,26 @@ class OutputParser:
             if decoded_line[0] != "@":
                 continue
 
-            print(f"Received output: {decoded_line}")
+            corresponding_input = await self.pending_inputs_owner.pending_inputs.get()
+            if corresponding_input == MonpolyLogEntry.COMMIT:
+                self.commit_count += 1
+                continue
+            print(
+                f"OUT: ({self.pending_inputs_owner.log_rule.template_name}, {self.pending_inputs_owner.log_rule.rule_name}): {decoded_line}"
+            )
             decoded_line = decoded_line[1:]
             parts = decoded_line.split(self.matches_seperator)
             if len(parts) != 3:
                 raise Exception("Invalid output format")
 
             timestamp = float(parts[0])
-            timepoint = int(re.search(r"\d+", parts[1]).group()) / 2
+            timepoint = int(re.search(r"\d+", parts[1]).group())
+            timepoint -= self.commit_count
             fullfilling_assignments = get_fullfilling_assignments(parts[2])
+
+            print(f"Mapping type: {corresponding_input}")
             await self.output_receiver.update_violations(
-                timestamp, timepoint, fullfilling_assignments
+                timestamp, timepoint, fullfilling_assignments, corresponding_input
             )
 
 

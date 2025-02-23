@@ -2,6 +2,7 @@ import os
 import asyncio
 import threading
 import subprocess
+import logging
 from collections import defaultdict
 
 if __name__ != "__main__":
@@ -11,6 +12,7 @@ if __name__ != "__main__":
         OutputParser,
     )
     from .rule_generators import ViolationType, LogRule
+    from .log_transformer import MonpolyLogEntry
     from ..channel_notifications import ViolationDispatcher
 
 
@@ -36,6 +38,7 @@ class RuleRunner:
         self.monpoly_started_event = asyncio.Event()
         self.finished_reading_monpoly = asyncio.Event()
         RuleRunner.sessions[self.session_id].append(self)
+        self.pending_inputs = None
         self._initialize_log_rule()
 
     def __del__(self):
@@ -53,19 +56,39 @@ class RuleRunner:
 
     def receive_log_entry(self, log_entry):
         transformed_log_entry = self.log_transformer.transform(log_entry)
+        log_entry_type = self.log_transformer.determine_log_type(log_entry)
         future = asyncio.run_coroutine_threadsafe(
-            self._write_log_entry(transformed_log_entry), self.listening_loop
+            self._write_log_entry(transformed_log_entry, log_entry_type),
+            self.listening_loop,
         )
-        future.result()
+        try:
+            future.result()
+        except Exception as e:
+            print(f"Error in _write_log_entry: {e}")
 
-    async def _write_log_entry(self, monpolified_log_entry: str):
-        print(f"Received log entry: {monpolified_log_entry}")
+    async def _write_log_entry(
+        self, monpolified_log_entry: str, log_type: MonpolyLogEntry
+    ):
+
         monpolified_log_entry += "\n"
         await self.monpoly_started_event.wait()
+
+        if not self.pending_inputs:
+            self.pending_inputs = asyncio.Queue()
+
         if self.monpoly.stdin:
+            await self.pending_inputs.put(log_type)
             encoded = monpolified_log_entry.encode()
             self.monpoly.stdin.write(encoded)
+            await self.pending_inputs.put(MonpolyLogEntry.COMMIT)
+            encoded = self.log_transformer.generate_commit(
+                monpolified_log_entry
+            ).encode()
+            self.monpoly.stdin.write(encoded)
             await self.monpoly.stdin.drain()
+            print(
+                f"IN: ({self.log_rule.template_name}, {self.log_rule.rule_name}): {monpolified_log_entry} of type {log_type}"
+            )
         else:
             raise Exception("Monpoly is not running")
 
@@ -107,7 +130,7 @@ class RuleRunner:
                 self.log_rule.template_name,
             )
         )
-        out_p = OutputParser(self.monpoly, tracker)
+        out_p = OutputParser(self.monpoly, tracker, self)
         asyncio.create_task(out_p.read_output())
         self.monpoly_started_event.set()
 
@@ -179,7 +202,12 @@ class RuleRunner:
 
     def start(self):
         def launch_listener_loop(loop: asyncio.AbstractEventLoop):
+            def handle_exception(loop, context):
+                logging.error("Exception in event loop: %s", context)
+
             asyncio.set_event_loop(loop)
+            loop.set_exception_handler(handle_exception)
+            print("listener loop running")
             loop.run_forever()
 
         if (not self.listening_loop) or (not self.listening_loop.is_running()):
