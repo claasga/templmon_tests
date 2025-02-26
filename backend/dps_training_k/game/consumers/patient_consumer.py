@@ -1,5 +1,5 @@
 from urllib.parse import parse_qs
-
+import time
 from django.db.models import Q
 
 from game.models import (
@@ -25,6 +25,10 @@ from ..channel_notifications import (
 )
 from ..serializers.patient_relocating_serializer import PatientRelocatingSerializer
 from ..serializers.resource_assignment_serializer import AreaResourceSerializer
+
+currently_tested_patient = None
+measurement_start = None
+measured_logtype = None
 
 
 class PatientConsumer(AbstractConsumer):
@@ -63,7 +67,7 @@ class PatientConsumer(AbstractConsumer):
         ]
         self.patient_frontend_id = ""
         self.currently_inspected_action = None
-
+        self.measured_times = []
         patient_request_map = {
             self.PatientIncomingMessageTypes.ACTION_ADD: (
                 self.handle_action_add,
@@ -111,6 +115,35 @@ class PatientConsumer(AbstractConsumer):
             ),
         }
         self.REQUESTS_MAP.update(patient_request_map)
+
+    def dispatch_request(self, content):
+        request_type = content.get("messageType")
+        msgt = self.PatientIncomingMessageTypes
+        if request_type in [
+            msgt.ACTION_ADD,
+            msgt.ACTION_CANCEL,
+            msgt.PERSONNEL_ASSIGN,
+            msgt.PERSONNEL_RELEASE,
+            msgt.TRIAGE,
+        ]:
+
+            logtype_map = {
+                msgt.ACTION_ADD: "action_started",
+                msgt.ACTION_CANCEL: "action_canceled",
+                msgt.PERSONNEL_ASSIGN: "assigned_personnel",
+                msgt.PERSONNEL_RELEASE: "unassigned_personnel",
+                msgt.TRIAGE: "triage",
+            }
+            global currently_tested_patient, measurement_start, measured_logtype
+            currently_tested_patient = self.patient_frontend_id
+            measurement_start = time.perf_counter()
+            measured_logtype = logtype_map.get(request_type)
+            print("PC: stored elements:")
+            print(currently_tested_patient)
+            print(measurement_start)
+            print(measured_logtype)
+            print("------------------------------------------")
+        super().dispatch_request(content)
 
     def get_patient_instance(self):
         # this enforces that we always work with up to date data from the database
@@ -272,6 +305,12 @@ class PatientConsumer(AbstractConsumer):
     # ------------------------------------------------------------------------------------------------------------------------------------------------
     # Events triggered internally by channel notifications
     # ------------------------------------------------------------------------------------------------------------------------------------------------
+    def _stop_measurement(self):
+        print("PC: stop measurement called")
+        if not measurement_start:
+            return
+        self.measured_times.append(time.perf_counter() - measurement_start)
+        print(f"PC: measured time: {self.measured_times[-1]}")
 
     def state_change_event(self, event=None):
         serialized_state = StateSerializer(
@@ -300,6 +339,8 @@ class PatientConsumer(AbstractConsumer):
         )
 
     def action_list_event(self, event=None):
+        print("PC: action list event called")
+        self._stop_measurement()
         actions = []
 
         """all action_instances where either the patient_instance is self.patient_instance or 
@@ -378,3 +419,12 @@ class PatientConsumer(AbstractConsumer):
             self.PatientOutgoingMessageTypes.RESOURCE_ASSIGNMENTS,
             resourceAssignments=[area_data],
         )
+
+    def personnel_assigned_event(self, event):
+        self._stop_measurement()
+
+    def personnel_unassigned_event(self, event):
+        self._stop_measurement()
+
+    def triage_update_event(self, event):
+        self._stop_measurement()

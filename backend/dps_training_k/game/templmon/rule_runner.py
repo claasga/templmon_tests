@@ -38,11 +38,18 @@ class RuleRunner:
         self.monpoly_started_event = asyncio.Event()
         self.finished_reading_monpoly = asyncio.Event()
         RuleRunner.sessions[self.session_id].append(self)
-        self.pending_inputs = None
+        self._lazy_pending_inputs = None
+        self._initialized_stdin = False
         self._initialize_log_rule()
 
     def __del__(self):
         pass
+
+    @property
+    def pending_inputs(self):
+        if not self._lazy_pending_inputs:
+            self._lazy_pending_inputs = asyncio.Queue()
+        return self._lazy_pending_inputs
 
     @classmethod
     def start_session(cls, session_id):
@@ -57,6 +64,9 @@ class RuleRunner:
     def receive_log_entry(self, log_entry):
         transformed_log_entry = self.log_transformer.transform(log_entry)
         log_entry_type = self.log_transformer.determine_log_type(log_entry)
+        # if log_entry_type == MonpolyLogEntry.UNKNOW_LOG_TYPE:
+        #    return  # ToDo: remove
+        print(f"IN: Log Entry Type: {log_entry_type}")
         future = asyncio.run_coroutine_threadsafe(
             self._write_log_entry(transformed_log_entry, log_entry_type),
             self.listening_loop,
@@ -66,29 +76,43 @@ class RuleRunner:
         except Exception as e:
             print(f"Error in _write_log_entry: {e}")
 
+    async def _send_and_process(self, input: str):
+        input = f"{input}\n"
+        encoded = input.encode()
+        self.monpoly.stdin.write(encoded)
+        await self.monpoly.stdin.drain()
+        print("RR: sending finished")
+
     async def _write_log_entry(
         self, monpolified_log_entry: str, log_type: MonpolyLogEntry
     ):
-
-        monpolified_log_entry += "\n"
         await self.monpoly_started_event.wait()
-
-        if not self.pending_inputs:
-            self.pending_inputs = asyncio.Queue()
-
+        if (
+            not self._initialized_stdin
+        ):  # Race condition, ignored because we don't currently process things in parallel
+            await self.pending_inputs.put(MonpolyLogEntry.COMMIT)
+            await self._send_and_process(
+                self.log_transformer.generate_commit(monpolified_log_entry)
+            )
+            self._initialized_stdin = True
         if self.monpoly.stdin:
             await self.pending_inputs.put(log_type)
-            encoded = monpolified_log_entry.encode()
-            self.monpoly.stdin.write(encoded)
+            print(f"RR: sending entry: {monpolified_log_entry}")
+            await self._send_and_process(monpolified_log_entry)
+            await asyncio.sleep(0.25)
             await self.pending_inputs.put(MonpolyLogEntry.COMMIT)
-            encoded = self.log_transformer.generate_commit(
-                monpolified_log_entry
-            ).encode()
-            self.monpoly.stdin.write(encoded)
-            await self.monpoly.stdin.drain()
             print(
-                f"IN: ({self.log_rule.template_name}, {self.log_rule.rule_name}): {monpolified_log_entry} of type {log_type}"
+                f"RR: sending commit: {self.log_transformer.generate_commit(monpolified_log_entry)}"
             )
+            await self._send_and_process(
+                self.log_transformer.generate_commit(monpolified_log_entry)
+            )
+            await asyncio.sleep(0.25)
+            print("*************************************")
+
+            # print(
+            #    f"IN: ({self.log_rule.template_name}, {self.log_rule.rule_name}): {monpolified_log_entry} of type {log_type}"
+            # )
         else:
             raise Exception("Monpoly is not running")
 

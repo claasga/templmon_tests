@@ -228,3 +228,12 @@ class AbstractConsumer(JsonWebsocketConsumer, ABC):
     def resource_assignment_event(self, event):
         """Needs to be implemented here to send this event on_exercise_start via channel_notifications to patient_consumer"""
         pass
+
+    def personnel_assigned_event(self, event):
+        pass
+
+    def personnel_unassigned_event(self, event):
+        pass
+
+    def triage_update_event(self, event):
+        pass

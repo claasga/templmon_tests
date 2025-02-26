@@ -37,6 +37,11 @@ class ChannelEventTypes:
     DURATIONAL_VIOLATION_START_EVENT = "durational.violation.start.event"
     DURATIONAL_VIOLATION_END_EVENT = "durational.violation.end.event"
     DURATIONAL_VIOLATION_UPDATE_EVENT = "durational.violation.update.event"
+    VIOLATION_PROCESSING_FINISHED = "violation.processing.finished.event"
+
+    PERSONNEL_ASSIGNED_EVENT = "personnel.assigned.event"
+    PERSONNEL_UNASSIGNED_EVENT = "personnel.unassigned.event"
+    TRIAGE_UPDATE_EVENT = "triage.update.event"
 
 
 def _notify_group(group_channel_name, event):
@@ -347,7 +352,7 @@ class Observable:
         if send_past_logs:
             past_logs = models.LogEntry.objects.filter(
                 exercise__frontend_id=exercise_frontend_id
-            ).order_by("pk")
+            ).order_by("timestamp", "pk")
             for log_entry in past_logs:
                 subscriber.receive_log_entry(log_entry)
 
@@ -505,6 +510,11 @@ class PatientInstanceDispatcher(ChannelNotifier):
         if changes and changes_set & cls.location_changes:
             cls._notify_patient_move(patient_instance)
 
+        if changes and "triage" in changes:
+            channel = cls.get_group_name(cls.get_exercise(patient_instance))
+            event = {"type": ChannelEventTypes.TRIAGE_UPDATE_EVENT}
+            _notify_group(channel, event)
+
     @classmethod
     def create_trainer_log(cls, patient_instance, changes, is_updated):
         changes_set = set(changes) if changes else set()
@@ -598,6 +608,11 @@ class PersonnelDispatcher(ChannelNotifier):
         if changes_set & cls.assignment_changes or not changes:
             channel = cls.get_group_name(cls.get_exercise(personnel))
             event = {"type": ChannelEventTypes.RESOURCE_ASSIGNMENT_EVENT}
+            _notify_group(channel, event)
+            if isinstance(personnel.attached_instance(), models.PatientInstance):
+                event = {"type": ChannelEventTypes.PERSONNEL_ASSIGNED_EVENT}
+            else:
+                event = {"type": ChannelEventTypes.PERSONNEL_UNASSIGNED_EVENT}
             _notify_group(channel, event)
 
     @classmethod
@@ -772,6 +787,19 @@ class ViolationDispatcher:
             "violation_assignment": violation_assignment,
             "time_stamp": time_stamp,
             "time_point": time_point,
+            "input_type": input_type,
+        }
+        await _async_notify_group(channel, event)
+
+    @classmethod
+    async def dispatch_processing_finished(
+        cls, session_id, rule_name, template_name, input_type
+    ):
+        channel = cls.get_group_name(session_id)
+        event = {
+            "type": ChannelEventTypes.VIOLATION_PROCESSING_FINISHED,
+            "rule_name": rule_name,
+            "template_name": template_name,
             "input_type": input_type,
         }
         await _async_notify_group(channel, event)

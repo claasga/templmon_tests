@@ -34,6 +34,9 @@ class SingularViolationTracker(ViolationTracker):
                 timepoint,
                 input_type,
             )
+        await self._violation_listener.dispatch_processing_finished(
+            self._session_id, self._rule_name, self._template_name, input_type
+        )
 
 
 class DurationalViolationTracker(ViolationTracker):
@@ -108,6 +111,9 @@ class DurationalViolationTracker(ViolationTracker):
             await self._remove_violations(
                 timestamp, timepoint, unfinished_keys, input_type
             )
+            await self._violation_listener.dispatch_processing_finished(
+                self._session_id, self._rule_name, self._template_name, input_type
+            )
             return
 
         violations_filtered = [
@@ -154,6 +160,9 @@ class DurationalViolationTracker(ViolationTracker):
         )
         await self._change_violations(
             timestamp, timepoint, violations_to_change, input_type
+        )
+        await self._violation_listener.dispatch_processing_finished(
+            self._session_id, self._rule_name, self._template_name, input_type
         )
 
 
@@ -217,6 +226,7 @@ class OutputParser:
             return assignment_dicts
 
         while True:
+            print("OP: waiting for output")
             line = await self.process.stdout.readline()
             if not line:
                 print("process terminated")
@@ -226,13 +236,17 @@ class OutputParser:
             if decoded_line[0] != "@":
                 continue
 
+            print("OP: waiting for input from inputs")
             corresponding_input = await self.pending_inputs_owner.pending_inputs.get()
+            print(
+                f"OP: Queue size is around {self.pending_inputs_owner.pending_inputs.qsize()}, input is: {corresponding_input}"
+            )
             if corresponding_input == MonpolyLogEntry.COMMIT:
                 self.commit_count += 1
                 continue
-            print(
-                f"OUT: ({self.pending_inputs_owner.log_rule.template_name}, {self.pending_inputs_owner.log_rule.rule_name}): {decoded_line}"
-            )
+            # print(
+            #    f"OUT: ({self.pending_inputs_owner.log_rule.template_name}, {self.pending_inputs_owner.log_rule.rule_name}): {decoded_line}"
+            # )
             decoded_line = decoded_line[1:]
             parts = decoded_line.split(self.matches_seperator)
             if len(parts) != 3:

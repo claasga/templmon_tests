@@ -71,7 +71,9 @@ class LogTransformer:
 
         elif log_type == MonpolyLogEntry.UNASSIGNED_PERSONNEL:
             personnel_id = log_entry.personnel.all().first().pk
-            log_str += UnassignedPersonnel.log(personnel_id)
+            log_str += UnassignedPersonnel.log(
+                personnel_id,
+            )
 
         elif log_type == MonpolyLogEntry.PATIENT_ARRIVED:
             patient_id = log_entry.patient_instance.pk
