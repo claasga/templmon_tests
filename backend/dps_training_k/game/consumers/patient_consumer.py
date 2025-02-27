@@ -60,6 +60,11 @@ class PatientConsumer(AbstractConsumer):
         PATIENT_BACK = "patient-back"
         PATIENT_RELOCATING = "patient-relocating"
 
+    class PatientOutgoingTestTypes:
+        PATIENT_MEASUREMENT_FINISHED = "patient-measurement-finished"
+        PERSONNEL_ASSIGNED = "personnel-assigned"
+        PERSONNEL_UNASSIGNED = "personnel-unassigned"
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.default_arguments = [
@@ -311,6 +316,7 @@ class PatientConsumer(AbstractConsumer):
             return
         self.measured_times.append(time.perf_counter() - measurement_start)
         print(f"PC: measured time: {self.measured_times[-1]}")
+        self.send_event(self.PatientOutgoingTestTypes.PATIENT_MEASUREMENT_FINISHED)
 
     def state_change_event(self, event=None):
         serialized_state = StateSerializer(
@@ -422,9 +428,11 @@ class PatientConsumer(AbstractConsumer):
 
     def personnel_assigned_event(self, event):
         self._stop_measurement()
+        self.send_event(self.PatientOutgoingTestTypes.PERSONNEL_ASSIGNED)
 
     def personnel_unassigned_event(self, event):
         self._stop_measurement()
+        self.send_event(self.PatientOutgoingTestTypes.PERSONNEL_UNASSIGNED)
 
     def triage_update_event(self, event):
         self._stop_measurement()

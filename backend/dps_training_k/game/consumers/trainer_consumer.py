@@ -48,6 +48,7 @@ class TrainerConsumer(AbstractConsumer):
     class TrainerOutgoingMessageTypes:
         LOG_UPDATE = "log-update"
         RESPONSE = "response"
+        TRAINER_MEASUREMENT_FINISHED = "trainer-measurement-finished"
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -515,3 +516,4 @@ class TrainerConsumer(AbstractConsumer):
         print(
             f"TC: measured time: {self.patient_instances_latencies[currently_tested_patient][-1]}"
         )
+        self.send_event(self.TrainerOutgoingMessageTypes.TRAINER_MEASUREMENT_FINISHED)
