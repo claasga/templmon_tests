@@ -22,6 +22,7 @@ PATIENT_WS_URI = "ws://localhost:8000/ws/patient"
 def process_message(data: json):
     data = json.loads(data)
     mt = data.get("messageType")
+    print(mt)
     if mt == "failure":
         # TODO: Implement failure handling (e.g., show error toast)
         pass
@@ -45,7 +46,7 @@ def process_message(data: json):
         # TODO: Load available actions into the store
         pass
     elif mt == "exercise":
-        print(data, flush=True)
+        print(data.get("exercise"))
         pass
     elif mt == "exercise-start":
         # TODO: Set exerciseStore status to 'running' and update screens (e.g., STATUS and ACTIONS)
@@ -128,6 +129,10 @@ async def generate_trainer_websocket(token):
 
 async def generate_patient_websocket(token):
     websocket = await websockets.connect(PATIENT_WS_URI + "/?token=" + token)
+    exercise = await websocket.recv()
+    available_actions = await websocket.recv()
+    available_patients = await websocket.recv()
+    state = await websocket.recv()
     return websocket
 
 
@@ -214,6 +219,29 @@ async def setup_exercise(
     return patient_ids, exercise.get("exerciseId")
 
 
+async def start_exercise(
+    trainer_ws: websockets.WebSocketClientProtocol,
+    patients_ws: list[websockets.WebSocketClientProtocol],
+):
+    await trainer_ws.send(json.dumps({"messageType": "exercise-start"}))
+    exercise_start = await trainer_ws.recv()
+    for patient_ws in patients_ws:
+        exercise_start = await patient_ws.recv()
+        action_list = await patient_ws.recv()
+
+
+async def ghost_consume(
+    idle_ws: list[websockets.WebSocketClientProtocol], expected_type=None
+):
+    for ws in idle_ws:
+        message = await ws.recv()
+        message_type = json.loads(message).get("messageType")
+        if expected_type and message_type != expected_type:
+            raise ValueError(
+                f"Expected message type {expected_type}, got {message_type}"
+            )
+
+
 async def main():
     # Login via HTTP to get tokens before WebSocket connections
     trainer_name = f"trainer_created_{datetime.datetime.now()}"
@@ -229,31 +257,38 @@ async def main():
     patients_ws = await asyncio.gather(
         *[generate_patient_websocket(token) for token in tokens]
     )
-
-    await trainer_ws.send(json.dumps({"messageType": "exercise-start"}))
+    idle_ws = patients_ws.copy()
+    idle_ws.append(trainer_ws)
+    await start_exercise(trainer_ws, patients_ws)
     for i, patient_ws in enumerate(patients_ws):
+        idle_ws.pop(i)
         print("***********Next Patient***************", flush=True)
         await patient_ws.send(json.dumps({"messageType": "triage", "triage": 1}))
+        await ghost_consume(idle_ws, "exercise")
         patient_is_processed = False
-        hit_count = 0
+
         while not patient_is_processed:
             message = await patient_ws.recv()
-            hit_count += process_message(message) == "patient-measurement-finished"
-            patient_is_processed = hit_count == i + 1
+            patient_is_processed = (
+                process_message(message) == "patient-measurement-finished"
+            )
         print("Patient while loop completed", flush=True)
 
         trainer_is_processed = False
-        hit_count = 0
         while not trainer_is_processed:
             message = await trainer_ws.recv()
-
-            hit_count = process_message(message) == "trainer-measurement-finished"
-            trainer_is_processed = hit_count == i + 1
+            trainer_is_processed = (
+                process_message(message) == "trainer-measurement-finished"
+            )
         print("Trainer while loop completed", flush=True)
         await patient_ws.send(json.dumps({"messageType": "triage", "triage": 2}))
         print("***********After second triage***************", flush=True)
+        await ghost_consume(idle_ws, "exercise")
         message = await patient_ws.recv()
         process_message(message)
+        patient_measurement_finished = await patient_ws.recv()
+        trainer_measurement_finished = await trainer_ws.recv()
+        idle_ws.insert(i, patient_ws)
 
     await trainer_ws.send(json.dumps({"messageType": "exercise-stop"}))
 

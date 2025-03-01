@@ -511,7 +511,7 @@ class PatientInstanceDispatcher(ChannelNotifier):
             cls._notify_patient_move(patient_instance)
 
         if changes and "triage" in changes:
-            channel = cls.get_group_name(cls.get_exercise(patient_instance))
+            channel = cls.get_group_name(patient_instance)
             event = {"type": ChannelEventTypes.TRIAGE_UPDATE_EVENT}
             _notify_group(channel, event)
 
