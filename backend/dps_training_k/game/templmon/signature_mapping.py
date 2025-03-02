@@ -156,6 +156,24 @@ class UnassignedPersonnel(LogType):
         return cls._log([personnel])
 
 
+class AssignedMaterial(LogType):
+    _BASE_VARIABLES = [RuleProperty.DEVICE, RuleProperty.PERSONNEL]
+    MONPOLY_NAME = "assigned_material"
+
+    @classmethod
+    def log(cls, device, personnel):
+        return cls._log([device, personnel])
+
+
+class UnassignedMaterial(LogType):
+    _BASE_VARIABLES = [RuleProperty.DEVICE]
+    MONPOLY_NAME = "unassigned_material"
+
+    @classmethod
+    def log(cls, device):
+        return cls._log([device])
+
+
 class ChangedState(LogType):
     _BASE_VARIABLES = [
         RuleProperty.PATIENT,

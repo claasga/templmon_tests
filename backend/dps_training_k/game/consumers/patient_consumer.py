@@ -26,9 +26,7 @@ from ..channel_notifications import (
 from ..serializers.patient_relocating_serializer import PatientRelocatingSerializer
 from ..serializers.resource_assignment_serializer import AreaResourceSerializer
 
-currently_tested_patient = None
-measurement_start = None
-measured_logtype = None
+measuring_instance = None
 
 
 class PatientConsumer(AbstractConsumer):
@@ -67,6 +65,8 @@ class PatientConsumer(AbstractConsumer):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.measurement_start = None
+        self.measured_logtype = None
         self.default_arguments = [
             lambda: PatientInstance.objects.get(frontend_id=self.patient_frontend_id)
         ]
@@ -129,6 +129,8 @@ class PatientConsumer(AbstractConsumer):
             msgt.ACTION_CANCEL,
             msgt.PERSONNEL_ASSIGN,
             msgt.PERSONNEL_RELEASE,
+            msgt.MATERIAL_ASSIGN,
+            msgt.MATERIAL_RELEASE,
             msgt.TRIAGE,
         ]:
 
@@ -137,16 +139,19 @@ class PatientConsumer(AbstractConsumer):
                 msgt.ACTION_CANCEL: "action_canceled",
                 msgt.PERSONNEL_ASSIGN: "assigned_personnel",
                 msgt.PERSONNEL_RELEASE: "unassigned_personnel",
+                msgt.MATERIAL_ASSIGN: "assigned_material",
+                msgt.MATERIAL_RELEASE: "unassigned_material",
                 msgt.TRIAGE: "triage",
             }
-            global currently_tested_patient, measurement_start, measured_logtype
-            currently_tested_patient = self.patient_frontend_id
-            measurement_start = time.perf_counter()
-            measured_logtype = logtype_map.get(request_type)
-            print("PC: stored elements:")
-            print(currently_tested_patient)
-            print(measurement_start)
-            print(measured_logtype)
+
+            self.measurement_start = time.perf_counter()
+            self.measured_logtype = logtype_map.get(request_type)
+            global measuring_instance
+            measuring_instance = self
+            print("PC: STORED ELEMENTS:")
+            print(self.patient_frontend_id)
+            print(self.measurement_start)
+            print(self.measured_logtype)
             print("------------------------------------------")
         super().dispatch_request(content)
 
@@ -312,11 +317,18 @@ class PatientConsumer(AbstractConsumer):
     # ------------------------------------------------------------------------------------------------------------------------------------------------
     def _stop_measurement(self):
         print("PC: stop measurement called")
-        if not measurement_start:
-            return
-        self.measured_times.append(time.perf_counter() - measurement_start)
+        if not self.measurement_start:
+            return None
+        end_time = time.perf_counter() - self.measurement_start
+        self.measured_times.append(end_time)
         print(f"PC: measured time: {self.measured_times[-1]}")
-        self.send_event(self.PatientOutgoingTestTypes.PATIENT_MEASUREMENT_FINISHED)
+        return end_time
+
+    def finish_measurement(self):
+        self.measured_logtype = None
+        self.measurement_start = None
+        global measuring_instance
+        measuring_instance = None
 
     def state_change_event(self, event=None):
         serialized_state = StateSerializer(
@@ -346,7 +358,7 @@ class PatientConsumer(AbstractConsumer):
 
     def action_list_event(self, event=None):
         print("PC: action list event called")
-        self._stop_measurement()
+        end_time = self._stop_measurement()
         actions = []
 
         """all action_instances where either the patient_instance is self.patient_instance or 
@@ -384,6 +396,8 @@ class PatientConsumer(AbstractConsumer):
             self.PatientOutgoingMessageTypes.ACTION_LIST,
             actions=actions,
         )
+        if end_time:
+            self.send_event(self.PatientOutgoingTestTypes.PATIENT_MEASUREMENT_FINISHED)
 
     def relocation_start_event(self, event):
         self.unsubscribe(ChannelNotifier.get_group_name(self.exercise))
@@ -407,6 +421,8 @@ class PatientConsumer(AbstractConsumer):
         super().send_exercise_event(event)
 
     def resource_assignment_event(self, event=None):
+        end_time = self._stop_measurement()
+
         patient_instance = self.get_patient_instance()
 
         if not patient_instance:
@@ -425,14 +441,11 @@ class PatientConsumer(AbstractConsumer):
             self.PatientOutgoingMessageTypes.RESOURCE_ASSIGNMENTS,
             resourceAssignments=[area_data],
         )
-
-    def personnel_assigned_event(self, event):
-        self._stop_measurement()
-        self.send_event(self.PatientOutgoingTestTypes.PERSONNEL_ASSIGNED)
-
-    def personnel_unassigned_event(self, event):
-        self._stop_measurement()
-        self.send_event(self.PatientOutgoingTestTypes.PERSONNEL_UNASSIGNED)
+        time.sleep(1)
+        if end_time:
+            self.send_event(self.PatientOutgoingTestTypes.PATIENT_MEASUREMENT_FINISHED)
 
     def triage_update_event(self, event):
-        self._stop_measurement()
+        end_time = self._stop_measurement()
+        if end_time:
+            self.send_event(self.PatientOutgoingTestTypes.PATIENT_MEASUREMENT_FINISHED)

@@ -490,12 +490,16 @@ class TrainerConsumer(AbstractConsumer):
     def violation_processing_finished_event(self, event):
         logtype = event["input_type"]
         rule_id = f'{event["template_name"]}_{event["rule_name"]}'
-        print(f"TC: measured_logtype == {patient_consumer.measured_logtype}")
-        if not patient_consumer.measured_logtype:
+        print(
+            f"TC: measured_logtype == {patient_consumer.measuring_instance.measured_logtype if patient_consumer.measuring_instance else None}"
+        )
+        if not patient_consumer.measuring_instance:
             return
-        measured_logtype = patient_consumer.measured_logtype
-        currently_tested_patient = patient_consumer.currently_tested_patient
-        measurement_start = patient_consumer.measurement_start
+        measured_logtype = patient_consumer.measuring_instance.measured_logtype
+        currently_tested_patient = (
+            patient_consumer.measuring_instance.patient_frontend_id
+        )
+        measurement_start = patient_consumer.measuring_instance.measurement_start
         print(f"TC: own logtype = {logtype}, fetched logtype = {measured_logtype}")
         if logtype != measured_logtype:
             return
@@ -508,11 +512,7 @@ class TrainerConsumer(AbstractConsumer):
         )
         if self.received_rules_count == self.rules_count:
             self.received_rules_count = 0
-            (
-                patient_consumer.measured_logtype,
-                patient_consumer.currently_tested_patient,
-                patient_consumer.measurement_start,
-            ) = (None, None, None)
+            patient_consumer.measuring_instance.finish_measurement()
         print(
             f"TC: measured time: {self.patient_instances_latencies[currently_tested_patient][-1]}"
         )

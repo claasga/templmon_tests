@@ -39,8 +39,8 @@ class ChannelEventTypes:
     DURATIONAL_VIOLATION_UPDATE_EVENT = "durational.violation.update.event"
     VIOLATION_PROCESSING_FINISHED = "violation.processing.finished.event"
 
-    PERSONNEL_ASSIGNED_EVENT = "personnel.assigned.event"
-    PERSONNEL_UNASSIGNED_EVENT = "personnel.unassigned.event"
+    # PERSONNEL_ASSIGNED_EVENT = "personnel.assigned.event"
+    # PERSONNEL_UNASSIGNED_EVENT = "personnel.unassigned.event"
     TRIAGE_UPDATE_EVENT = "triage.update.event"
 
 
@@ -447,13 +447,14 @@ class MaterialInstanceDispatcher(ChannelNotifier):
             return
 
         if changes_set & assignment_changes:
-            type = models.LogEntry.TYPES.ASSIGNED
+            type = models.LogEntry.TYPES.UNASSIGNED
             current_location = material.attached_instance()
             content["location_type"] = current_location.frontend_model_name()
             content["location_name"] = current_location.name
             log_entry = None
 
             if isinstance(current_location, models.PatientInstance):
+                type = models.LogEntry.TYPES.ASSIGNED
                 log_entry = models.LogEntry.objects.create(
                     exercise=cls.get_exercise(material),
                     category=category,
@@ -608,11 +609,6 @@ class PersonnelDispatcher(ChannelNotifier):
         if changes_set & cls.assignment_changes or not changes:
             channel = cls.get_group_name(cls.get_exercise(personnel))
             event = {"type": ChannelEventTypes.RESOURCE_ASSIGNMENT_EVENT}
-            _notify_group(channel, event)
-            if isinstance(personnel.attached_instance(), models.PatientInstance):
-                event = {"type": ChannelEventTypes.PERSONNEL_ASSIGNED_EVENT}
-            else:
-                event = {"type": ChannelEventTypes.PERSONNEL_UNASSIGNED_EVENT}
             _notify_group(channel, event)
 
     @classmethod

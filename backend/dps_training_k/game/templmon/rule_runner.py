@@ -99,7 +99,6 @@ class RuleRunner:
             await self.pending_inputs.put(log_type)
             print(f"RR: sending entry: {monpolified_log_entry}")
             await self._send_and_process(monpolified_log_entry)
-            await asyncio.sleep(0.25)
             await self.pending_inputs.put(MonpolyLogEntry.COMMIT)
             print(
                 f"RR: sending commit: {self.log_transformer.generate_commit(monpolified_log_entry)}"
@@ -107,7 +106,6 @@ class RuleRunner:
             await self._send_and_process(
                 self.log_transformer.generate_commit(monpolified_log_entry)
             )
-            await asyncio.sleep(0.25)
             print("*************************************")
 
             # print(

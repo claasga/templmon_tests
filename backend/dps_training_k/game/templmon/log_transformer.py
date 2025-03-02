@@ -8,6 +8,8 @@ class MonpolyLogEntry:
     PERSONNEL_ARRIVED = "personnel_arrived"
     ASSIGNED_PERSONNEL = "assigned_personnel"
     UNASSIGNED_PERSONNEL = "unassigned_personnel"
+    ASSIGNED_MATERIAL = "assigned_material"
+    UNASSIGNED_MATERIAL = "unassigned_material"
     PATIENT_ARRIVED = "patient_arrived"
     CHANGED_STATE = "changed_state"
     UNKNOW_LOG_TYPE = "unknown_log_type"
@@ -47,6 +49,11 @@ class LogTransformer:
                 return MonpolyLogEntry.ACTION_STARTED
             elif log_entry.type == l_types.CANCELED:
                 return MonpolyLogEntry.ACTION_CANCELED
+        elif log_entry.category == l_categories.MATERIAL:
+            if log_entry.type == l_types.ASSIGNED:
+                return MonpolyLogEntry.ASSIGNED_MATERIAL
+            elif log_entry.type == l_types.UNASSIGNED:
+                return MonpolyLogEntry.UNASSIGNED_MATERIAL
         else:
             return MonpolyLogEntry.UNKNOW_LOG_TYPE
 
@@ -104,6 +111,13 @@ class LogTransformer:
             patient_id = log_entry.patient_instance.pk
             level = log_entry.content.get("level")
             log_str += Triaged.log(patient_id, level)
+        elif log_type == MonpolyLogEntry.ASSIGNED_MATERIAL:
+            material_id = log_entry.materials.all().first().pk
+            patient_id = log_entry.patient_instance.pk
+            log_str += AssignedMaterial.log(material_id, patient_id)
+        elif log_type == MonpolyLogEntry.UNASSIGNED_MATERIAL:
+            material_id = log_entry.materials.all().first().pk
+            log_str += UnassignedMaterial.log(material_id)
         else:
             log_str += f"unknown_log_type({log_entry.pk}, {log_entry.type}, {log_entry.category})"
 
