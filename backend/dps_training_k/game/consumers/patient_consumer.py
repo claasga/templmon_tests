@@ -73,6 +73,7 @@ class PatientConsumer(AbstractConsumer):
         self.patient_frontend_id = ""
         self.currently_inspected_action = None
         self.measured_times = []
+        self.skipped_first_action_list_event = True
         patient_request_map = {
             self.PatientIncomingMessageTypes.ACTION_ADD: (
                 self.handle_action_add,
@@ -358,7 +359,7 @@ class PatientConsumer(AbstractConsumer):
 
     def action_list_event(self, event=None):
         print("PC: action list event called")
-        end_time = self._stop_measurement()
+
         actions = []
 
         """all action_instances where either the patient_instance is self.patient_instance or 
@@ -392,12 +393,28 @@ class PatientConsumer(AbstractConsumer):
 
             actions.append(action_data)
 
+        assert actions[-1].get("actionId") >= actions[0].get("actionId")
+        newest_action_status = actions[-1].get("actionStatus")
+        print(f"PC: newest action status: {newest_action_status}")
+        if newest_action_status == ActionInstanceStateNames.PLANNED:
+            self.skipped_first_action_list_event = False
+        elif newest_action_status == ActionInstanceStateNames.IN_PROGRESS:
+            self.skipped_first_action_list_event = (
+                not self.skipped_first_action_list_event
+            )
+        print(
+            f"PC: skipped first action list event: {self.skipped_first_action_list_event}"
+        )
+        if not self.skipped_first_action_list_event:
+            return
+        end_time = self._stop_measurement()
         self.send_event(
             self.PatientOutgoingMessageTypes.ACTION_LIST,
             actions=actions,
         )
         if end_time:
             self.send_event(self.PatientOutgoingTestTypes.PATIENT_MEASUREMENT_FINISHED)
+            print("PC: sent patient measurement finished event")
 
     def relocation_start_event(self, event):
         self.unsubscribe(ChannelNotifier.get_group_name(self.exercise))
@@ -441,7 +458,6 @@ class PatientConsumer(AbstractConsumer):
             self.PatientOutgoingMessageTypes.RESOURCE_ASSIGNMENTS,
             resourceAssignments=[area_data],
         )
-        time.sleep(1)
         if end_time:
             self.send_event(self.PatientOutgoingTestTypes.PATIENT_MEASUREMENT_FINISHED)
 

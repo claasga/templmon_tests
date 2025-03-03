@@ -108,6 +108,7 @@ class ChannelNotifier:
             "exercise_pk": exercise.id,
         }
         _notify_group(channel, event)
+        print("Exercise update sent")
 
     @classmethod
     def _notify_action_check_update(cls, exercise):
@@ -154,6 +155,7 @@ class ActionInstanceDispatcher(ChannelNotifier):
                     channel,
                     applied_action,
                 )
+                print("action confirmation sent")
             if applied_action.template.relocates:
                 if (
                     applied_action.state_name
@@ -189,7 +191,8 @@ class ActionInstanceDispatcher(ChannelNotifier):
             raise ValueError(
                 "ActionInstance must be associated with a patient_instance or lab."
             )
-
+        if event_type == ChannelEventTypes.ACTION_LIST_EVENT:
+            print("action list sent")
         event = {
             "type": event_type,
             "action_instance_id": applied_action.id if applied_action else None,
@@ -534,6 +537,7 @@ class PatientInstanceDispatcher(ChannelNotifier):
         elif changes and "triage" in changes:
             # get_triage_display gets the long version of a ChoiceField
             content["level"] = str(patient_instance.get_triage_display())
+            print(f"---Triage: {patient_instance.get_triage_display()}---")
             type = models.LogEntry.TYPES.TRIAGED
         elif changes and "patient_state" in changes:
             type = models.LogEntry.TYPES.UPDATED

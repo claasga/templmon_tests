@@ -1,5 +1,5 @@
 import random
-
+import time
 from django.db import models
 
 from game.channel_notifications import ActionInstanceDispatcher
@@ -151,12 +151,16 @@ class ActionInstance(LocalTimeable, models.Model):
         ActionInstanceDispatcher.delete_and_notify(self)
 
     def _update_state(self, state_name, info_text=None):
+        print("Update State started")
+
         new_state = self.current_state.update(
             state_name, self.get_local_time(), info_text
         )
         if new_state:
             self.current_state = new_state
             self.save(update_fields=["current_state"])
+        print("Update State finished")
+
         return self.current_state
 
     @classmethod
@@ -262,6 +266,7 @@ class ActionInstance(LocalTimeable, models.Model):
         )
 
     def try_application(self):
+        print("Try application started")
         is_applicable = True
 
         # Check applicability
@@ -300,9 +305,12 @@ class ActionInstance(LocalTimeable, models.Model):
         if relocates:
             self._try_relocating()
         self._start_application()
+        print("Try application finished")
         return True, None
 
     def _start_application(self):
+        print("Start application started")
+
         if not self.patient_instance and not self.lab:
             raise ValueError(
                 "An action instance always needs a patient instance or lab to be scheduled"
@@ -324,8 +332,10 @@ class ActionInstance(LocalTimeable, models.Model):
             self.save(update_fields=["historic_patient_state"])
         self._update_state(ActionInstanceStateNames.IN_PROGRESS)
         self._consume_resources()
+        print("Start application finished")
 
     def _application_finished(self):
+        print("application finished started")
         self._update_state(
             ActionInstanceStateNames.FINISHED,
             info_text=self.template.get_result(self),
@@ -334,6 +344,7 @@ class ActionInstance(LocalTimeable, models.Model):
         self._try_resource_production()
         self._try_returning()
         self._try_starting_action_effects()
+        print("application finished finished")
 
     def try_cancelation(self) -> tuple[bool, str]:
         """Returns whether the object was canceled successfully and an error message if not."""

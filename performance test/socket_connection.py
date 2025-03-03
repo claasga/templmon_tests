@@ -27,18 +27,24 @@ class PatientGroup:
     simulation_end = None
 
     @classmethod
-    async def receive_and_check_message(cls, websocket_instance, message_type):
-        message = await websocket_instance.recv()
-        received_message_type = json.loads(message).get("messageType")
-        if received_message_type != message_type:
+    def check_message(
+        cls, websocket_instance, received_message_type, expected_message_type
+    ):
+        if received_message_type != expected_message_type:
             if received_message_type == "failure":
                 raise ValueError(
-                    f"WS {websocket_instance.id}: Expected message type '{message_type}', got failure with {json.loads(message).get('message')}"
+                    f"WS {websocket_instance.id}: Expected message type '{expected_message_type}', got failure with {json.loads(message).get('message')}"
                 )
             else:
                 raise ValueError(
-                    f"WS {websocket_instance.id}:Expected message type '{message_type}', got {received_message_type}"
+                    f"WS {websocket_instance.id}:Expected message type '{expected_message_type}', got {received_message_type}"
                 )
+
+    @classmethod
+    async def receive_and_check_message(cls, websocket_instance, message_type):
+        message = await websocket_instance.recv()
+        received_message_type = json.loads(message).get("messageType")
+        cls.check_message(websocket_instance, received_message_type, message_type)
 
     @classmethod
     async def global_consume_message_type(cls, message_type):
@@ -47,6 +53,15 @@ class PatientGroup:
                 await cls.receive_and_check_message(ws, message_type)
             if message_type == "exercise":
                 await cls.receive_and_check_message(group.trainer_ws, message_type)
+
+    @classmethod
+    async def get_confirmed_action_id(cls, websocket_instance):
+        message = await websocket_instance.recv()
+        received_message_type = json.loads(message).get("messageType")
+        cls.check_message(
+            websocket_instance, received_message_type, "action-confirmation"
+        )
+        return json.loads(message).get("actionId")
 
     def __init__(
         self,
@@ -62,26 +77,29 @@ class PatientGroup:
         self.trainer_ws = trainer_ws
         self.connected_personnel_ids = connected_personnel_ids
         self.material_id = material_id
+        self.currently_blocked_resources = len(patients_ws) * [0]
+        self.running_action = None
         self._INITIALIZATION = [
             self.initial_triage,
             self.assign_personnel,
             self.assign_material,
             self.start_examination,
-            # self.activate_next_group,
-            # self.await_finishing,
-            # self.pass_time,
-            # self.unassign_personnel,
-            # self.switch_to_competing_patient,
+            self.current_time,
+            self.activate_next_group,
+            self.await_finishing,
+            self.pass_time,
+            self.unassign_personnel,
+            self.switch_to_competing_patient,
         ]
         self._LOOP = [
             self.assign_personnel,
-            # self.start_wrong_action,
-            # self.cancel_action,
-            # self.start_actual_action,
-            # self.activate_next_group,
-            # self.await_finishing,
-            # self.unassign_personnel,
-            # self.switch_to_competing_patient,
+            self.start_wrong_action,
+            self.cancel_wrong_action,
+            self.start_actual_action,
+            self.activate_next_group,
+            self.await_finishing,
+            self.unassign_personnel,
+            self.switch_to_competing_patient,
         ]
         self.STEPS = self._INITIALIZATION + self._LOOP
         self.STEPS_LOOP_START_INDEX = len(self._INITIALIZATION)
@@ -98,15 +116,18 @@ class PatientGroup:
             )
 
         cls.simulation_end = datetime.datetime.now() + datetime.timedelta(minutes=10.0)
-        await cls.groups[0]._execute_plan()
+        i = 0
+        while datetime.datetime.now() < cls.simulation_end:
+            await cls.groups[i]._execute_plan()
+            i = (i + 1) % len(cls.groups)
 
     async def _execute_plan(self):
-
-        while datetime.datetime.now() < self.simulation_end:
-            await self.STEPS[self._patients_step[0]]()
-            self._patients_step[0] = (
-                self._patients_step[0] + 1
-                if self._patients_step[0] + 1 < len(self.STEPS)
+        pause_plan = False
+        while not pause_plan and datetime.datetime.now() < self.simulation_end:
+            pause_plan, update_index = await self.STEPS[self._patients_step[0]]()
+            self._patients_step[update_index] = (
+                self._patients_step[update_index] + 1
+                if self._patients_step[update_index] + 1 < len(self.STEPS)
                 else self.STEPS_LOOP_START_INDEX
             )
             print(f"next step is now {self._patients_step[0]}")
@@ -123,10 +144,13 @@ class PatientGroup:
         patient_code, patient_ws = self.patient_queue[0]
         if patient_code == "1001":
             await patient_ws.send(
-                json.dumps({"messageType": "triage", "triage": self.runthrough % 3})
+                json.dumps(
+                    {"messageType": "triage", "triage": str(self.runthrough % 3)}
+                )
             )
             await self.global_consume_message_type("exercise")
             await self.finish_measurements(patient_ws)
+        return False, 0
 
     async def assign_personnel(self):
         patient_code, patient_ws = self.patient_queue[0]
@@ -146,6 +170,7 @@ class PatientGroup:
             # await self.receive_and_check_message(
             #    other_ws, "patient-measurement-finished"
             # )
+        return False, 0
 
     async def assign_material(self):
         patient_code, patient_ws = self.patient_queue[0]
@@ -154,11 +179,40 @@ class PatientGroup:
                 {"messageType": "material-assign", "materialId": self.material_id}
             )
         )
+
         await self.global_consume_message_type("resource-assignments")
         print("trying to finish measurements", flush=True)
         await self.finish_measurements(patient_ws)
+        return False, 0
+
+    async def probe_messages(
+        self, websocket_instance: websockets.WebSocketClientProtocol
+    ):
+        print("Probing:")
+        for i in range(15):
+            message = await websocket_instance.recv()
+            received_message_type = json.loads(message).get("messageType")
+            print(received_message_type)
+            if received_message_type == "action-list":
+                print(json.loads(message).get("actions"))
+            await asyncio.sleep(0.1)
+
+    async def start_action(self, action_name):
+        patient_code, patient_ws = self.patient_queue[0]
+        blocked_resources = self.currently_blocked_resources[0]
+        await patient_ws.send(
+            json.dumps({"messageType": "action-add", "actionName": action_name})
+        )
+        self.running_action = await self.get_confirmed_action_id(patient_ws)
+        for _ in range(blocked_resources):
+            await self.global_consume_message_type("exercise")
+        await self.receive_and_check_message(patient_ws, "action-list")
+        await self.finish_measurements(patient_ws)
+        return False, 0
 
     async def start_examination(self):
+        self.currently_blocked_resources[0] = 2
+        return await self.start_action("Blutzucker analysieren")
         patient_code, patient_ws = self.patient_queue[0]
         await patient_ws.send(
             json.dumps(
@@ -166,8 +220,75 @@ class PatientGroup:
             )
         )
         await self.receive_and_check_message(patient_ws, "action-confirmation")
+        for _ in range(self.current_action_blocks_x_resources):
+            await self.global_consume_message_type("exercise")
         await self.receive_and_check_message(patient_ws, "action-list")
         await self.finish_measurements(patient_ws)
+        return False, 0
+
+    async def switch_to_competing_patient(self):
+        rotate = lambda list_type: list_type.append(list_type.pop(0))
+        rotate(self.patient_queue)
+        rotate(self._patients_step)
+        rotate(self.currently_blocked_resources)
+        return False, -1
+
+    async def await_finishing(self):
+        patient_code, patient_ws = self.patient_queue[0]
+        await self.receive_and_check_message(patient_ws, "action-list")
+        for _ in range(self.currently_blocked_resources[0]):
+            await self.global_consume_message_type("exercise")
+        self.currently_blocked_resources[0] = 0
+        return False, 0
+
+    async def current_time(self):
+        self.examination_start = datetime.datetime.now()
+        return False, 0
+
+    async def activate_next_group(self):
+        return True, 0
+
+    async def pass_time(self):
+        time_to_pass = 10.0
+        timedelta = (datetime.datetime.now() - self.examination_start).total_seconds()
+        if timedelta < time_to_pass:
+            await asyncio.sleep(time_to_pass - timedelta)
+        return False, 0
+
+    async def unassign_personnel(self):
+        patient_code, patient_ws = self.patient_queue[0]
+        for personnel_id in self.connected_personnel_ids:
+            await patient_ws.send(
+                json.dumps(
+                    {"messageType": "personnel-release", "personnelId": personnel_id}
+                )
+            )
+            await self.global_consume_message_type("resource-assignments")
+            await self.finish_measurements(patient_ws)
+        return False, 0
+
+    async def start_wrong_action(self):
+        self.currently_blocked_resources[0] = (
+            2  # ToDo: warum ist das zwei? -> sollte 1 sein
+        )
+        return await self.start_action("ZVK")
+
+    async def cancel_wrong_action(self):
+        patient_code, patient_ws = self.patient_queue[0]
+        await patient_ws.send(
+            json.dumps(
+                {"messageType": "action-cancel", "actionId": self.running_action}
+            )
+        )
+        for _ in range(self.currently_blocked_resources[0]):
+            await self.global_consume_message_type("exercise")
+        await self.receive_and_check_message(patient_ws, "action-list")
+        await self.finish_measurements(patient_ws)
+        return False, 0
+
+    async def start_actual_action(self):
+        self.currently_blocked_resources[0] = 2
+        return await self.start_action("Turniquet")
 
 
 def process_message(data: json):

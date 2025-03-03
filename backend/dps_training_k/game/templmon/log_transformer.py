@@ -25,21 +25,33 @@ class LogTransformer:
     def determine_log_type(cls, log_entry: le.LogEntry):
         l_types = le.LogEntry.TYPES
         l_categories = le.LogEntry.CATEGORIES
-        if log_entry.category == l_categories.PERSONNEL:
+        if log_entry.category == l_categories.PERSONNEL and log_entry.type in [
+            l_types.ARRIVED,
+            l_types.ASSIGNED,
+            l_types.UNASSIGNED,
+        ]:
             if log_entry.type == l_types.ARRIVED:
                 return MonpolyLogEntry.PERSONNEL_ARRIVED
             elif log_entry.type == l_types.ASSIGNED:
                 return MonpolyLogEntry.ASSIGNED_PERSONNEL
             elif log_entry.type == l_types.UNASSIGNED:
                 return MonpolyLogEntry.UNASSIGNED_PERSONNEL
-        elif log_entry.category == l_categories.PATIENT:
+        elif log_entry.category == l_categories.PATIENT and log_entry.type in [
+            l_types.ARRIVED,
+            l_types.UPDATED,
+            l_types.TRIAGED,
+        ]:
             if log_entry.type == l_types.ARRIVED:
                 return MonpolyLogEntry.PATIENT_ARRIVED
             elif log_entry.type == l_types.UPDATED:
                 return MonpolyLogEntry.CHANGED_STATE
             elif log_entry.type == l_types.TRIAGED:
                 return MonpolyLogEntry.TRIAGED
-        elif log_entry.category == l_categories.ACTION:
+        elif log_entry.category == l_categories.ACTION and log_entry.type in [
+            l_types.FINISHED,
+            l_types.STARTED,
+            l_types.CANCELED,
+        ]:
             if (
                 log_entry.type == l_types.FINISHED
                 and "examination_result" in log_entry.content
@@ -49,7 +61,10 @@ class LogTransformer:
                 return MonpolyLogEntry.ACTION_STARTED
             elif log_entry.type == l_types.CANCELED:
                 return MonpolyLogEntry.ACTION_CANCELED
-        elif log_entry.category == l_categories.MATERIAL:
+        elif log_entry.category == l_categories.MATERIAL and log_entry.type in [
+            l_types.ASSIGNED,
+            l_types.UNASSIGNED,
+        ]:
             if log_entry.type == l_types.ASSIGNED:
                 return MonpolyLogEntry.ASSIGNED_MATERIAL
             elif log_entry.type == l_types.UNASSIGNED:
