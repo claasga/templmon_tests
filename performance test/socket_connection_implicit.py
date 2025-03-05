@@ -43,14 +43,12 @@ class PatientGroup:
         self,
         patient_codes,
         patients_ws,
-        trainer_ws,
         connected_personnel_ids,
         material_id,
     ):
         self.patient_queue = list(zip(patient_codes, patients_ws))
         self._patients_step = len(patients_ws) * [0]
         self.runthrough = 1
-        self.trainer_ws = trainer_ws
         self.connected_personnel_ids = connected_personnel_ids
         self.material_id = material_id
         self.running_action = None
@@ -152,11 +150,8 @@ class PatientGroup:
         return json.loads(message).get("actionId")
 
     async def skip_until_measurement_finished(self):
-        await asyncio.gather(
-            self.skip_until_message(
-                self.get_current_patient_ws(), "patient-measurement-finished"
-            ),
-            self.skip_until_message(self.trainer_ws, "trainer-measurement-finished"),
+        await self.skip_until_message(
+            self.get_current_patient_ws(), "patient-measurement-finished"
         )
 
     async def initial_triage(self):
@@ -287,6 +282,29 @@ class PatientGroup:
 
     async def start_actual_action(self):
         return await self.start_action("Turniquet")
+
+
+class PatientGroupTemplmonActive(PatientGroup):
+    def __init__(
+        self,
+        patient_codes,
+        patients_ws,
+        connected_personnel_ids,
+        material_id,
+        trainer_ws,
+    ):
+        super().__init__(
+            patient_codes, patients_ws, connected_personnel_ids, material_id
+        )
+        self.trainer_ws = trainer_ws
+
+    async def skip_until_measurement_finished(self):
+        await asyncio.gather(
+            self.skip_until_message(
+                self.get_current_patient_ws(), "patient-measurement-finished"
+            ),
+            self.skip_until_message(self.trainer_ws, "trainer-measurement-finished"),
+        )
 
 
 def login_trainer(username, password):
@@ -474,7 +492,7 @@ async def main():
     for i in range(len(material_ids)):
         i_1 = i * 2
         i_2 = (i * 2) + 1
-        patient_group_instance = PatientGroup(
+        patient_group_instance = PatientGroupTemplmonActive(
             ["1001", "1005"] * (patient_count // 2),
             [patients_ws[i_1], patients_ws[i_2]],
             trainer_ws,

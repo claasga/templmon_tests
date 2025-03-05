@@ -233,6 +233,7 @@ class OutputParser:
                 self.finished_reading_process.set()
                 break
             decoded_line = line.decode("utf-8")
+            print(decoded_line)
             if decoded_line[0] != "@":
                 continue
 
