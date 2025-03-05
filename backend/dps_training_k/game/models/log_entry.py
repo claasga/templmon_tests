@@ -2,6 +2,7 @@ from django.db import models
 from django.utils import timezone
 
 from game.channel_notifications import LogEntryDispatcher
+from django.db import transaction
 
 
 class LogEntry(models.Model):
@@ -25,12 +26,12 @@ class LogEntry(models.Model):
         TRIAGED = "TR", "triaged"
         UPDATED = "UP", "updated"
 
-    class Meta:
-        constraints = [
-            models.UniqueConstraint(
-                fields=["local_id", "exercise"], name="unique_local_id_for_entry"
-            )
-        ]
+    # class Meta:
+    #    constraints = [
+    #        models.UniqueConstraint(
+    #            fields=["local_id", "exercise"], name="unique_local_id_for_entry"
+    #        )
+    #    ]
 
     local_id = models.IntegerField(blank=True)
     exercise = models.ForeignKey("Exercise", on_delete=models.CASCADE)
@@ -67,9 +68,7 @@ class LogEntry(models.Model):
             else:
                 self.timestamp = None
 
-            self.local_id = self.generate_local_id(
-                self.exercise
-            )  # prone to race conditions
+            self.local_id = self.generate_local_id(self.exercise)
 
         changes = kwargs.get("update_fields", None)
         LogEntryDispatcher.save_and_notify(self, changes, super(), *args, **kwargs)
@@ -84,12 +83,15 @@ class LogEntry(models.Model):
         return log_entries
 
     def generate_local_id(self, exercise):
-        highest_local_id = LogEntry.objects.filter(exercise=exercise).aggregate(
-            models.Max("local_id")
-        )["local_id__max"]
-        if highest_local_id:
-            return highest_local_id + 1
-        return 1
+        with transaction.atomic():
+            highest_local_id = (
+                LogEntry.objects.select_for_update()
+                .filter(exercise=exercise)
+                .aggregate(max_local_id=models.Max("local_id"))
+            )["max_local_id"]
+            if highest_local_id:
+                return highest_local_id + 1
+            return 1
 
     def is_valid(self):
         if self.timestamp and self.local_id and not self.is_dirty:

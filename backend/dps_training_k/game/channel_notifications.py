@@ -102,13 +102,13 @@ class ChannelNotifier:
 
     @classmethod
     def _notify_exercise_update(cls, exercise):
+        print("Cn: sending exercise update")
         channel = cls.get_group_name(exercise)
         event = {
             "type": ChannelEventTypes.EXERCISE_UPDATE,
             "exercise_pk": exercise.id,
         }
         _notify_group(channel, event)
-        print("Exercise update sent")
 
     @classmethod
     def _notify_action_check_update(cls, exercise):
@@ -155,7 +155,6 @@ class ActionInstanceDispatcher(ChannelNotifier):
                     channel,
                     applied_action,
                 )
-                print("action confirmation sent")
             if applied_action.template.relocates:
                 if (
                     applied_action.state_name
@@ -175,10 +174,12 @@ class ActionInstanceDispatcher(ChannelNotifier):
                         channel,
                         applied_action,
                     )
+                    print("fresh dispatch instance notifying exercise")
                     cls._notify_exercise_update(cls.get_exercise(applied_action))
 
         # always send action list event
         cls._notify_action_event(ChannelEventTypes.ACTION_LIST_EVENT, channel)
+        print("dispatch instance finished")
 
     @classmethod
     def _notify_action_event(cls, event_type, channel, applied_action=None):
@@ -191,8 +192,6 @@ class ActionInstanceDispatcher(ChannelNotifier):
             raise ValueError(
                 "ActionInstance must be associated with a patient_instance or lab."
             )
-        if event_type == ChannelEventTypes.ACTION_LIST_EVENT:
-            print("action list sent")
         event = {
             "type": event_type,
             "action_instance_id": applied_action.id if applied_action else None,
@@ -537,7 +536,6 @@ class PatientInstanceDispatcher(ChannelNotifier):
         elif changes and "triage" in changes:
             # get_triage_display gets the long version of a ChoiceField
             content["level"] = str(patient_instance.get_triage_display())
-            print(f"---Triage: {patient_instance.get_triage_display()}---")
             type = models.LogEntry.TYPES.TRIAGED
         elif changes and "patient_state" in changes:
             type = models.LogEntry.TYPES.UPDATED

@@ -149,11 +149,6 @@ class PatientConsumer(AbstractConsumer):
             self.measured_logtype = logtype_map.get(request_type)
             global measuring_instance
             measuring_instance = self
-            print("PC: STORED ELEMENTS:")
-            print(self.patient_frontend_id)
-            print(self.measurement_start)
-            print(self.measured_logtype)
-            print("------------------------------------------")
         super().dispatch_request(content)
 
     def get_patient_instance(self):
@@ -358,7 +353,6 @@ class PatientConsumer(AbstractConsumer):
         )
 
     def action_list_event(self, event=None):
-        print("PC: action list event called")
 
         actions = []
 
@@ -393,18 +387,16 @@ class PatientConsumer(AbstractConsumer):
 
             actions.append(action_data)
 
+        if not actions:
+            return
         assert actions[-1].get("actionId") >= actions[0].get("actionId")
         newest_action_status = actions[-1].get("actionStatus")
-        print(f"PC: newest action status: {newest_action_status}")
         if newest_action_status == ActionInstanceStateNames.PLANNED:
             self.skipped_first_action_list_event = False
         elif newest_action_status == ActionInstanceStateNames.IN_PROGRESS:
             self.skipped_first_action_list_event = (
                 not self.skipped_first_action_list_event
             )
-        print(
-            f"PC: skipped first action list event: {self.skipped_first_action_list_event}"
-        )
         if not self.skipped_first_action_list_event:
             return
         end_time = self._stop_measurement()
@@ -414,7 +406,6 @@ class PatientConsumer(AbstractConsumer):
         )
         if end_time:
             self.send_event(self.PatientOutgoingTestTypes.PATIENT_MEASUREMENT_FINISHED)
-            print("PC: sent patient measurement finished event")
 
     def relocation_start_event(self, event):
         self.unsubscribe(ChannelNotifier.get_group_name(self.exercise))

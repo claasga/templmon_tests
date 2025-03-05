@@ -27,41 +27,17 @@ class PatientGroup:
     simulation_end = None
 
     @classmethod
-    def check_message(
-        cls, websocket_instance, received_message_type, expected_message_type
-    ):
+    def check_message(cls, websocket_instance, received_message, expected_message_type):
+        received_message_type = json.loads(received_message).get("messageType")
         if received_message_type != expected_message_type:
             if received_message_type == "failure":
                 raise ValueError(
-                    f"WS {websocket_instance.id}: Expected message type '{expected_message_type}', got failure"
+                    f"WS {websocket_instance.id}: Expected message type '{expected_message_type}', got failure with {json.loads(received_message).get('message')}"
                 )
             else:
                 raise ValueError(
                     f"WS {websocket_instance.id}:Expected message type '{expected_message_type}', got {received_message_type}"
                 )
-
-    @classmethod
-    async def receive_and_check_message(cls, websocket_instance, message_type):
-        message = await websocket_instance.recv()
-        received_message_type = json.loads(message).get("messageType")
-        cls.check_message(websocket_instance, received_message_type, message_type)
-
-    @classmethod
-    async def global_consume_message_type(cls, message_type):
-        for group in cls.groups:
-            for ws in [patient_ws for _, patient_ws in group.patient_queue]:
-                await cls.receive_and_check_message(ws, message_type)
-        if message_type == "exercise":
-            await cls.receive_and_check_message(group.trainer_ws, message_type)
-
-    @classmethod
-    async def get_confirmed_action_id(cls, websocket_instance):
-        message = await websocket_instance.recv()
-        received_message_type = json.loads(message).get("messageType")
-        cls.check_message(
-            websocket_instance, received_message_type, "action-confirmation"
-        )
-        return json.loads(message).get("actionId")
 
     def __init__(
         self,
@@ -77,7 +53,6 @@ class PatientGroup:
         self.trainer_ws = trainer_ws
         self.connected_personnel_ids = connected_personnel_ids
         self.material_id = material_id
-        self.currently_blocked_resources = len(patients_ws) * [0]
         self.running_action = None
         self._INITIALIZATION = [
             self.initial_triage,  # 0
@@ -90,17 +65,17 @@ class PatientGroup:
             self.pass_time,  # 7
             self.unassign_personnel,  # 8
             self.unassign_material,  # 9
-            self.switch_to_competing_patient,  # 9
+            self.switch_to_competing_patient,  # 10
         ]
         self._LOOP = [
-            self.assign_personnel,  # 10
-            self.start_wrong_action,  # 11
-            self.cancel_wrong_action,  # 12
-            self.start_actual_action,  # 13
-            self.activate_next_group,  # 14
-            self.await_finishing,  # 15
-            self.unassign_personnel,  # 16
-            self.switch_to_competing_patient,  # 17
+            self.assign_personnel,  # 11
+            self.start_wrong_action,  # 12
+            self.cancel_wrong_action,  # 13
+            self.start_actual_action,  # 14
+            self.activate_next_group,  # 15
+            self.await_finishing,  # 16
+            self.unassign_personnel,  # 17
+            self.switch_to_competing_patient,  # 18
         ]
         self.STEPS = self._INITIALIZATION + self._LOOP
         self.STEPS_LOOP_START_INDEX = len(self._INITIALIZATION)
@@ -122,6 +97,19 @@ class PatientGroup:
             await cls.groups[i]._execute_plan()
             i = (i + 1) % len(cls.groups)
 
+    def get_current_patient_ws(self):
+        return self.patient_queue[0][1]
+
+    def get_current_patient_code(self):
+        return self.patient_queue[0][0]
+
+    async def recv_and_check_for_state_change(self):
+        message = await self.get_current_patient_ws().recv()
+        received_message_type = json.loads(message).get("messageType")
+        if received_message_type == "state":
+            return True
+        return False
+
     async def _execute_plan(self):
         pause_plan = False
         while not pause_plan and datetime.datetime.now() < self.simulation_end:
@@ -131,61 +119,75 @@ class PatientGroup:
                 if self._patients_step[update_index] + 1 < len(self.STEPS)
                 else self.STEPS_LOOP_START_INDEX
             )
-            print(f"next step is now {self._patients_step[0]}")
+            print(f"next step is now {self._patients_step[0]}", flush=True)
 
-    async def finish_measurements(self, patient_ws):
-        await self.receive_and_check_message(patient_ws, "patient-measurement-finished")
-        print("patient measurement finished")
-        await self.receive_and_check_message(
-            self.trainer_ws, "trainer-measurement-finished"
+    async def skip_until_message(self, websocket_instance, message_type):
+        message = await websocket_instance.recv()
+        received_message_type = json.loads(message).get("messageType")
+        print(
+            f"WS({websocket_instance.id} received {received_message_type}", flush=True
         )
-        print("trainer measurement finished")
+        while received_message_type != message_type:
+            if received_message_type == "failure":
+                raise ValueError(
+                    f"WS {websocket_instance.id}: Expected message type '{message_type}', got failure with {json.loads(message).get('message')}"
+                )
+            message = await websocket_instance.recv()
+            print(
+                f"WS({websocket_instance.id} received {received_message_type}",
+                flush=True,
+            )
+        return message
+
+    async def skip_until_get_action_id(self):
+
+        message = await self.skip_until_message(
+            self.get_current_patient_ws(), "action-confirmation"
+        )
+        self.check_message(
+            self.get_current_patient_ws(),
+            message,
+            "action-confirmation",
+        )
+        return json.loads(message).get("actionId")
+
+    async def skip_until_measurement_finished(self):
+        await asyncio.gather(
+            self.skip_until_message(
+                self.get_current_patient_ws(), "patient-measurement-finished"
+            ),
+            self.skip_until_message(self.trainer_ws, "trainer-measurement-finished"),
+        )
 
     async def initial_triage(self):
-        patient_code, patient_ws = self.patient_queue[0]
-        if patient_code == "1001":
+        if self.get_current_patient_code() == "1001":
 
-            print(f"Triagiere ws {patient_ws.id}")
-            await patient_ws.send(
+            print(f"Triagiere ws {self.get_current_patient_ws().id}")
+            await self.get_current_patient_ws().send(
                 json.dumps(
                     {"messageType": "triage", "triage": str(self.runthrough % 3)}
                 )
             )
-            await self.global_consume_message_type("exercise")
-            await self.finish_measurements(patient_ws)
+            await self.skip_until_measurement_finished()
         return False, 0
 
     async def assign_personnel(self):
-        patient_code, patient_ws = self.patient_queue[0]
         for personnel_id in self.connected_personnel_ids:
-            await patient_ws.send(
+            await self.get_current_patient_ws().send(
                 json.dumps(
                     {"messageType": "personnel-assign", "personnelId": personnel_id}
                 )
             )
-            print(f"WS {patient_ws.id}: assigning personnel {personnel_id}")
-            # await self.receive_and_check_message(
-            #    patient_ws, "patient-measurement-finished"
-            # )
-            await self.global_consume_message_type("resource-assignments")
-            await self.finish_measurements(patient_ws)
-            # _, other_ws = self.patient_queue[1]
-            # await self.receive_and_check_message(
-            #    other_ws, "patient-measurement-finished"
-            # )
+            await self.skip_until_measurement_finished()
         return False, 0
 
     async def assign_material(self):
-        patient_code, patient_ws = self.patient_queue[0]
-        await patient_ws.send(
+        await self.get_current_patient_ws().send(
             json.dumps(
                 {"messageType": "material-assign", "materialId": self.material_id}
             )
         )
-
-        await self.global_consume_message_type("resource-assignments")
-        print("trying to finish measurements", flush=True)
-        await self.finish_measurements(patient_ws)
+        await self.skip_until_measurement_finished()
         return False, 0
 
     async def probe_messages(
@@ -201,48 +203,40 @@ class PatientGroup:
             await asyncio.sleep(0.1)
 
     async def start_action(self, action_name):
-        patient_code, patient_ws = self.patient_queue[0]
-        blocked_resources = self.currently_blocked_resources[0]
-        await patient_ws.send(
+        await self.get_current_patient_ws().send(
             json.dumps({"messageType": "action-add", "actionName": action_name})
         )
-        self.running_action = await self.get_confirmed_action_id(patient_ws)
-        for _ in range(blocked_resources):
-            await self.global_consume_message_type("exercise")
-        await self.receive_and_check_message(patient_ws, "action-list")
-        await self.finish_measurements(patient_ws)
+        self.running_action = await self.skip_until_get_action_id()
+        await self.skip_until_measurement_finished()
         return False, 0
 
     async def start_examination(self):
-        self.currently_blocked_resources[0] = 2
         return await self.start_action("Blutzucker analysieren")
-        patient_code, patient_ws = self.patient_queue[0]
-        await patient_ws.send(
-            json.dumps(
-                {"messageType": "action-add", "actionName": "Blutzucker analysieren"}
-            )
-        )
-        await self.receive_and_check_message(patient_ws, "action-confirmation")
-        for _ in range(self.current_action_blocks_x_resources):
-            await self.global_consume_message_type("exercise")
-        await self.receive_and_check_message(patient_ws, "action-list")
-        await self.finish_measurements(patient_ws)
-        return False, 0
 
     async def switch_to_competing_patient(self):
         rotate = lambda list_type: list_type.append(list_type.pop(0))
         rotate(self.patient_queue)
         rotate(self._patients_step)
-        rotate(self.currently_blocked_resources)
         return False, -1
 
     async def await_finishing(self):
-        patient_code, patient_ws = self.patient_queue[0]
-        await self.probe_messages(self.trainer_ws)
-        await self.receive_and_check_message(patient_ws, "action-list")
-        for _ in range(self.currently_blocked_resources[0]):
-            await self.global_consume_message_type("exercise")
-        self.currently_blocked_resources[0] = 0
+        some_list = [1, 2, 3, 4, 5]
+        action_finished = False
+        while not action_finished:
+            action_list = await self.skip_until_message(
+                self.get_current_patient_ws(), "action-list"
+            )
+            action_list = json.loads(action_list).get("actions")
+            running_action = next(
+                (
+                    action
+                    for action in action_list
+                    if action.get("actionId") == self.running_action
+                ),
+                {"actionStatus": ""},
+            )
+            action_finished = running_action.get("actionStatus") == "FI"
+        self.running_action = None
         return False, 0
 
     async def current_time(self):
@@ -260,50 +254,38 @@ class PatientGroup:
         return False, 0
 
     async def unassign_personnel(self):
-        patient_code, patient_ws = self.patient_queue[0]
         for personnel_id in self.connected_personnel_ids:
-            await patient_ws.send(
+            await self.get_current_patient_ws().send(
                 json.dumps(
                     {"messageType": "personnel-release", "personnelId": personnel_id}
                 )
             )
-            await self.global_consume_message_type("resource-assignments")
-            await self.finish_measurements(patient_ws)
+            await self.skip_until_measurement_finished()
         return False, 0
 
     async def unassign_material(self):
-        patient_code, patient_ws = self.patient_queue[0]
-        await patient_ws.send(
+        await self.get_current_patient_ws().send(
             json.dumps(
                 {"messageType": "material-release", "materialId": self.material_id}
             )
         )
-        await self.probe_messages(patient_ws)
-        await self.global_consume_message_type("resource-assignments")
-        await self.finish_measurements(patient_ws)
+        await self.skip_until_measurement_finished()
         return False, 0
 
     async def start_wrong_action(self):
-        self.currently_blocked_resources[0] = (
-            2  # ToDo: warum ist das zwei? -> sollte 1 sein
-        )
         return await self.start_action("ZVK")
 
     async def cancel_wrong_action(self):
-        patient_code, patient_ws = self.patient_queue[0]
-        await patient_ws.send(
+        await self.get_current_patient_ws().send(
             json.dumps(
                 {"messageType": "action-cancel", "actionId": self.running_action}
             )
         )
-        for _ in range(self.currently_blocked_resources[0]):
-            await self.global_consume_message_type("exercise")
-        await self.receive_and_check_message(patient_ws, "action-list")
-        await self.finish_measurements(patient_ws)
+        await self.skip_until_measurement_finished()
+        self.running_action = None
         return False, 0
 
     async def start_actual_action(self):
-        self.currently_blocked_resources[0] = 1
         return await self.start_action("Turniquet")
 
 
@@ -507,120 +489,6 @@ async def main():
         print(e)
     finally:
         await trainer_ws.send(json.dumps({"messageType": "exercise-stop"}))
-    idle_ws = patients_ws.copy()
-    idle_ws.append(trainer_ws)
-
-    for i, patient_ws in enumerate(patients_ws):
-        idle_ws.pop(i)
-        print("***********Next Patient***************", flush=True)
-        await patient_ws.send(json.dumps({"messageType": "triage", "triage": 1}))
-        await ghost_consume(idle_ws, "exercise")
-        patient_is_processed = False
-
-        while not patient_is_processed:
-            message = await patient_ws.recv()
-            patient_is_processed = (
-                process_message(message) == "patient-measurement-finished"
-            )
-        print("Patient while loop completed", flush=True)
-
-        trainer_is_processed = False
-        while not trainer_is_processed:
-            message = await trainer_ws.recv()
-            trainer_is_processed = (
-                process_message(message) == "trainer-measurement-finished"
-            )
-        print("Trainer while loop completed", flush=True)
-        await patient_ws.send(json.dumps({"messageType": "triage", "triage": 2}))
-        print("***********After second triage***************", flush=True)
-        await ghost_consume(idle_ws, "exercise")
-        message = await patient_ws.recv()
-        process_message(message)
-        patient_measurement_finished = await patient_ws.recv()
-        process_message(patient_measurement_finished)
-        trainer_measurement_finished = await trainer_ws.recv()
-        idle_ws.insert(i, patient_ws)
-
-    await trainer_ws.send(json.dumps({"messageType": "exercise-stop"}))
-
-
-def process_message(data: json):
-    data = json.loads(data)
-    mt = data.get("messageType")
-    print(mt)
-    if mt == "failure":
-        # TODO: Implement failure handling (e.g., show error toast)
-        pass
-    elif mt == "warning":
-        # TODO: Implement warning handling (e.g., show warning toast)
-        pass
-    elif mt == "test-passthrough":
-        # TODO: Implement test-passthrough handling (e.g., show warning toast)
-        pass
-    elif mt == "patient-measurement-finished":
-        return "patient-measurement-finished"
-    elif mt == "trainer-measurement-finished":
-        return "trainer-measurement-finished"
-    elif mt == "state":
-        # TODO: Load state from data (e.g., update patientStore with state information)
-        pass
-    elif mt == "available-patients":
-        # TODO: Load available patients and initialize patientStore accordingly
-        pass
-    elif mt == "available-actions":
-        # TODO: Load available actions into the store
-        pass
-    elif mt == "exercise":
-        print(data.get("exercise"))
-        pass
-    elif mt == "exercise-start":
-        # TODO: Set exerciseStore status to 'running' and update screens (e.g., STATUS and ACTIONS)
-        pass
-    elif mt == "exercise-pause":
-        # TODO: Set exerciseStore status to 'paused' and switch to waiting screen
-        pass
-    elif mt == "exercise-resume":
-        # TODO: Set exerciseStore status to 'running' and update screens (e.g., STATUS and ACTIONS)
-        pass
-    elif mt == "exercise-end":
-        # TODO: Set exerciseStore status to 'ended' and show ended screen
-        pass
-    elif mt == "delete":
-        # TODO: Handle delete event
-        pass
-    elif mt == "information":
-        # TODO: Handle information event
-        pass
-    elif mt == "action-confirmation":
-        # TODO: Allow new actions as confirmation of prior action
-        pass
-    elif mt == "action-declination":
-        # TODO: Allow new actions and show error toast for action declination
-        pass
-    elif mt == "action-result":
-        # TODO: Handle action result event
-        pass
-    elif mt == "resource-assignments":
-        # TODO: Set resource assignments in the corresponding store
-        pass
-    elif mt == "action-list":
-        # TODO: Process action list and start updating timers as needed
-        pass
-    elif mt == "visible-injuries":
-        # TODO: Load visible injuries into the store
-        pass
-    elif mt == "action-check":
-        # TODO: Update action check store with provided data
-        pass
-    elif mt == "patient-relocating":
-        # TODO: Update patientStore for relocating patient and set waiting screen
-        pass
-    elif mt == "patient-back":
-        # TODO: Reset patientStore status after patient is back and update screens
-        pass
-    else:
-        # TODO: Handle unknown message types (e.g., show error toast/log error)
-        pass
 
 
 if __name__ == "__main__":

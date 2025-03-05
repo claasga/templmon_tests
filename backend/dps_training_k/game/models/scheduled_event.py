@@ -77,12 +77,14 @@ class ScheduledEvent(models.Model):
                 )
             elif isinstance(object, Area):
                 owner_instance = Owner.objects.filter(area_owner=object).latest("id")
+            if not owner_instance.event:
+                return None
             # Retrieve ScheduledEvent associated with the Owner instance and calculate remaining time
             time_until_event = owner_instance.event.end_date - settings.CURRENT_TIME()
             return int(
                 time_until_event.total_seconds()
             )  # would return float if not casted, float isn't necessary here
-        except Owner.DoesNotExist:
+        except (Owner.DoesNotExist, ScheduledEvent.DoesNotExist):
             # Handle the case where no Owner is associated with the related object, aka there is no scheduled event
             return None
 

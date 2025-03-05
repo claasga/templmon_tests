@@ -25,52 +25,41 @@ class LogTransformer:
     def determine_log_type(cls, log_entry: le.LogEntry):
         l_types = le.LogEntry.TYPES
         l_categories = le.LogEntry.CATEGORIES
-        if log_entry.category == l_categories.PERSONNEL and log_entry.type in [
-            l_types.ARRIVED,
-            l_types.ASSIGNED,
-            l_types.UNASSIGNED,
-        ]:
-            if log_entry.type == l_types.ARRIVED:
-                return MonpolyLogEntry.PERSONNEL_ARRIVED
-            elif log_entry.type == l_types.ASSIGNED:
-                return MonpolyLogEntry.ASSIGNED_PERSONNEL
-            elif log_entry.type == l_types.UNASSIGNED:
-                return MonpolyLogEntry.UNASSIGNED_PERSONNEL
-        elif log_entry.category == l_categories.PATIENT and log_entry.type in [
-            l_types.ARRIVED,
-            l_types.UPDATED,
-            l_types.TRIAGED,
-        ]:
-            if log_entry.type == l_types.ARRIVED:
-                return MonpolyLogEntry.PATIENT_ARRIVED
-            elif log_entry.type == l_types.UPDATED:
-                return MonpolyLogEntry.CHANGED_STATE
-            elif log_entry.type == l_types.TRIAGED:
-                return MonpolyLogEntry.TRIAGED
-        elif log_entry.category == l_categories.ACTION and log_entry.type in [
-            l_types.FINISHED,
-            l_types.STARTED,
-            l_types.CANCELED,
-        ]:
-            if (
-                log_entry.type == l_types.FINISHED
-                and "examination_result" in log_entry.content
-            ):
-                return MonpolyLogEntry.EXAMINATION_RESULT
-            elif log_entry.type == l_types.STARTED:
-                return MonpolyLogEntry.ACTION_STARTED
-            elif log_entry.type == l_types.CANCELED:
-                return MonpolyLogEntry.ACTION_CANCELED
-        elif log_entry.category == l_categories.MATERIAL and log_entry.type in [
-            l_types.ASSIGNED,
-            l_types.UNASSIGNED,
-        ]:
-            if log_entry.type == l_types.ASSIGNED:
-                return MonpolyLogEntry.ASSIGNED_MATERIAL
-            elif log_entry.type == l_types.UNASSIGNED:
-                return MonpolyLogEntry.UNASSIGNED_MATERIAL
-        else:
-            return MonpolyLogEntry.UNKNOW_LOG_TYPE
+        mapping = {
+            (
+                l_categories.PERSONNEL,
+                l_types.ARRIVED,
+            ): MonpolyLogEntry.PERSONNEL_ARRIVED,
+            (
+                l_categories.PERSONNEL,
+                l_types.ASSIGNED,
+            ): MonpolyLogEntry.ASSIGNED_PERSONNEL,
+            (
+                l_categories.PERSONNEL,
+                l_types.UNASSIGNED,
+            ): MonpolyLogEntry.UNASSIGNED_PERSONNEL,
+            (l_categories.PATIENT, l_types.ARRIVED): MonpolyLogEntry.PATIENT_ARRIVED,
+            (l_categories.PATIENT, l_types.UPDATED): MonpolyLogEntry.CHANGED_STATE,
+            (l_categories.PATIENT, l_types.TRIAGED): MonpolyLogEntry.TRIAGED,
+            (l_categories.ACTION, l_types.STARTED): MonpolyLogEntry.ACTION_STARTED,
+            (l_categories.ACTION, l_types.CANCELED): MonpolyLogEntry.ACTION_CANCELED,
+            (
+                l_categories.MATERIAL,
+                l_types.ASSIGNED,
+            ): MonpolyLogEntry.ASSIGNED_MATERIAL,
+            (
+                l_categories.MATERIAL,
+                l_types.UNASSIGNED,
+            ): MonpolyLogEntry.UNASSIGNED_MATERIAL,
+        }
+        key = (log_entry.category, log_entry.type)
+        if key == (l_categories.ACTION, l_types.FINISHED):
+            return (
+                MonpolyLogEntry.EXAMINATION_RESULT
+                if "examination_result" in log_entry.content
+                else MonpolyLogEntry.UNKNOW_LOG_TYPE
+            )
+        return mapping.get(key, MonpolyLogEntry.UNKNOW_LOG_TYPE)
 
     @classmethod
     def trigger_event(cls, posix_timestamp):

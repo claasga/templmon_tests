@@ -66,7 +66,7 @@ class RuleRunner:
         log_entry_type = self.log_transformer.determine_log_type(log_entry)
         # if log_entry_type == MonpolyLogEntry.UNKNOW_LOG_TYPE:
         #    return  # ToDo: remove
-        print(f"IN: Log Entry Type: {log_entry_type}")
+        # print(f"IN: Log Entry Type: {log_entry_type}")
         future = asyncio.run_coroutine_threadsafe(
             self._write_log_entry(transformed_log_entry, log_entry_type),
             self.listening_loop,
@@ -81,7 +81,7 @@ class RuleRunner:
         encoded = input.encode()
         self.monpoly.stdin.write(encoded)
         await self.monpoly.stdin.drain()
-        print("RR: sending finished")
+        # print("RR: sending finished")
 
     async def _write_log_entry(
         self, monpolified_log_entry: str, log_type: MonpolyLogEntry
@@ -106,7 +106,7 @@ class RuleRunner:
             await self._send_and_process(
                 self.log_transformer.generate_commit(monpolified_log_entry)
             )
-            print("*************************************")
+            # print("*************************************")
 
             # print(
             #    f"IN: ({self.log_rule.template_name}, {self.log_rule.rule_name}): {monpolified_log_entry} of type {log_type}"

@@ -83,7 +83,7 @@ class Exercise(NonEventable, models.Model):
         #     return 1
         # return 1 / self.config.time_speed_up
         if settings.DEBUG == True:
-            return 1
+            return 0.1
         return 1
 
     def is_running(self):
