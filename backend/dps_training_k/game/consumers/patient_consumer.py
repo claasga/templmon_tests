@@ -312,7 +312,6 @@ class PatientConsumer(AbstractConsumer):
     # Events triggered internally by channel notifications
     # ------------------------------------------------------------------------------------------------------------------------------------------------
     def _stop_measurement(self):
-        print("PC: stop measurement called")
         if not self.measurement_start:
             return None
         end_time = time.perf_counter() - self.measurement_start

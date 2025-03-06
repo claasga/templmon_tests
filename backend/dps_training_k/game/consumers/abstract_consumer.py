@@ -206,7 +206,6 @@ class AbstractConsumer(JsonWebsocketConsumer, ABC):
         )
 
     def _send_exercise(self, exercise):
-        print("---send exercise to frontend called---")
         self.send_event(
             self.OutgoingMessageTypes.EXERCISE,
             exercise=ExerciseSerializer(exercise).data,

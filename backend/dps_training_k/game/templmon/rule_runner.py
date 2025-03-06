@@ -97,11 +97,17 @@ class RuleRunner:
             self._initialized_stdin = True
         if self.monpoly.stdin:
             await self.pending_inputs.put(log_type)
-            print(f"RR: sending entry: {monpolified_log_entry}")
+            print(
+                f"RR: Queue size is now {self.pending_inputs.qsize()}, produced: {log_type}"
+            )
+            print(f"RR: Sending: {monpolified_log_entry}")
             await self._send_and_process(monpolified_log_entry)
             await self.pending_inputs.put(MonpolyLogEntry.COMMIT)
             print(
-                f"RR: sending commit: {self.log_transformer.generate_commit(monpolified_log_entry)}"
+                f"RR: Queue size is now {self.pending_inputs.qsize()}, produced: {MonpolyLogEntry.COMMIT}"
+            )
+            print(
+                f"RR: Sending: {self.log_transformer.generate_commit(monpolified_log_entry)}"
             )
             await self._send_and_process(
                 self.log_transformer.generate_commit(monpolified_log_entry)

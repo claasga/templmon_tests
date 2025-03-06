@@ -490,9 +490,9 @@ class TrainerConsumer(AbstractConsumer):
     def violation_processing_finished_event(self, event):
         logtype = event["input_type"]
         rule_id = f'{event["template_name"]}_{event["rule_name"]}'
-        # print(
-        #    f"TC: measured_logtype == {patient_consumer.measuring_instance.measured_logtype if patient_consumer.measuring_instance else None}"
-        # )
+        print(
+            f"TC: measured_logtype == {patient_consumer.measuring_instance.measured_logtype if patient_consumer.measuring_instance else None}"
+        )
         if not patient_consumer.measuring_instance:
             return
         measured_logtype = patient_consumer.measuring_instance.measured_logtype
@@ -500,7 +500,7 @@ class TrainerConsumer(AbstractConsumer):
             patient_consumer.measuring_instance.patient_frontend_id
         )
         measurement_start = patient_consumer.measuring_instance.measurement_start
-        # print(f"TC: own logtype = {logtype}, fetched logtype = {measured_logtype}")
+        print(f"TC: own logtype = {logtype}, fetched logtype = {measured_logtype}")
         if logtype != measured_logtype:
             return
 

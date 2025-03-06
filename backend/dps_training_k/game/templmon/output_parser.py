@@ -233,14 +233,18 @@ class OutputParser:
                 self.finished_reading_process.set()
                 break
             decoded_line = line.decode("utf-8")
-            print(decoded_line)
-            if decoded_line[0] != "@":
-                continue
 
-            print("OP: waiting for input from inputs")
+            if decoded_line[0] != "@":
+                if decoded_line[:2] != "At":
+                    print(f"OP: WARNING: {decoded_line[:-1]}")
+                    corresponding_input = (
+                        await self.pending_inputs_owner.pending_inputs.get()
+                    )
+                continue
+            print(f"OP: got {decoded_line[:-1]}")
             corresponding_input = await self.pending_inputs_owner.pending_inputs.get()
             print(
-                f"OP: Queue size is around {self.pending_inputs_owner.pending_inputs.qsize()}, input is: {corresponding_input}"
+                f"OP: Queue size is now {self.pending_inputs_owner.pending_inputs.qsize()}, consumed: {corresponding_input}"
             )
             if corresponding_input == MonpolyLogEntry.COMMIT:
                 self.commit_count += 1
@@ -258,7 +262,6 @@ class OutputParser:
             timepoint -= self.commit_count
             fullfilling_assignments = get_fullfilling_assignments(parts[2])
 
-            print(f"Mapping type: {corresponding_input}")
             await self.output_receiver.update_violations(
                 timestamp, timepoint, fullfilling_assignments, corresponding_input
             )

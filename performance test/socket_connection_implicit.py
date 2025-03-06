@@ -2,7 +2,6 @@ import asyncio
 import json
 import requests
 import websockets
-import random
 import datetime
 from uuid import UUID
 
@@ -68,7 +67,7 @@ class PatientGroup:
         self._LOOP = [
             self.assign_personnel,  # 11
             self.start_wrong_action,  # 12
-            self.cancel_wrong_action,  # 13
+            self.cancel_current_action,  # 13
             self.start_actual_action,  # 14
             self.activate_next_group,  # 15
             self.await_finishing,  # 16
@@ -101,26 +100,35 @@ class PatientGroup:
     def get_current_patient_code(self):
         return self.patient_queue[0][0]
 
-    async def recv_and_check_for_state_change(self):
-        message = await self.get_current_patient_ws().recv()
+    async def recv_and_check_for_state_change(self, websocket_instance):
+        message = await websocket_instance.recv()
         received_message_type = json.loads(message).get("messageType")
         if received_message_type == "state":
-            return True
-        return False
+            return True, message
+        return False, message
 
     async def _execute_plan(self):
         pause_plan = False
         while not pause_plan and datetime.datetime.now() < self.simulation_end:
-            pause_plan, update_index = await self.STEPS[self._patients_step[0]]()
+            state_change, pause_plan, update_index = await self.STEPS[
+                self._patients_step[0]
+            ]()
             self._patients_step[update_index] = (
                 self._patients_step[update_index] + 1
                 if self._patients_step[update_index] + 1 < len(self.STEPS)
                 else self.STEPS_LOOP_START_INDEX
             )
+            if state_change:
+                if self.running_action:
+                    await self.cancel_current_action()
+                self._patients_step[update_index] = 0
             print(f"next step is now {self._patients_step[0]}", flush=True)
 
     async def skip_until_message(self, websocket_instance, message_type):
-        message = await websocket_instance.recv()
+        state_change, message = await self.recv_and_check_for_state_change(
+            websocket_instance
+        )
+        # message = await
         received_message_type = json.loads(message).get("messageType")
         print(
             f"WS({websocket_instance.id} received {received_message_type}", flush=True
@@ -130,16 +138,20 @@ class PatientGroup:
                 raise ValueError(
                     f"WS {websocket_instance.id}: Expected message type '{message_type}', got failure with {json.loads(message).get('message')}"
                 )
-            message = await websocket_instance.recv()
+            temp_state_change, message = await self.recv_and_check_for_state_change(
+                websocket_instance
+            )
+            state_change = state_change or temp_state_change
+            received_message_type = json.loads(message).get("messageType")
             print(
                 f"WS({websocket_instance.id} received {received_message_type}",
                 flush=True,
             )
-        return message
+        return state_change, message
 
     async def skip_until_get_action_id(self):
 
-        message = await self.skip_until_message(
+        state_change, message = await self.skip_until_message(
             self.get_current_patient_ws(), "action-confirmation"
         )
         self.check_message(
@@ -147,14 +159,15 @@ class PatientGroup:
             message,
             "action-confirmation",
         )
-        return json.loads(message).get("actionId")
+        return state_change, json.loads(message).get("actionId")
 
     async def skip_until_measurement_finished(self):
-        await self.skip_until_message(
+        return await self.skip_until_message(
             self.get_current_patient_ws(), "patient-measurement-finished"
-        )
+        )[0]
 
     async def initial_triage(self):
+        state_change = False
         if self.get_current_patient_code() == "1001":
 
             print(f"Triagiere ws {self.get_current_patient_ws().id}")
@@ -163,18 +176,20 @@ class PatientGroup:
                     {"messageType": "triage", "triage": str(self.runthrough % 3)}
                 )
             )
-            await self.skip_until_measurement_finished()
-        return False, 0
+            state_change = await self.skip_until_measurement_finished()
+        return state_change, False, 0
 
     async def assign_personnel(self):
+        state_change = False
         for personnel_id in self.connected_personnel_ids:
             await self.get_current_patient_ws().send(
                 json.dumps(
                     {"messageType": "personnel-assign", "personnelId": personnel_id}
                 )
             )
-            await self.skip_until_measurement_finished()
-        return False, 0
+            temp_state_change = await self.skip_until_measurement_finished()
+            state_change = state_change or temp_state_change
+        return state_change, False, 0
 
     async def assign_material(self):
         await self.get_current_patient_ws().send(
@@ -182,8 +197,8 @@ class PatientGroup:
                 {"messageType": "material-assign", "materialId": self.material_id}
             )
         )
-        await self.skip_until_measurement_finished()
-        return False, 0
+        state_change = await self.skip_until_measurement_finished()
+        return state_change, False, 0
 
     async def probe_messages(
         self, websocket_instance: websockets.WebSocketClientProtocol
@@ -201,9 +216,10 @@ class PatientGroup:
         await self.get_current_patient_ws().send(
             json.dumps({"messageType": "action-add", "actionName": action_name})
         )
-        self.running_action = await self.skip_until_get_action_id()
-        await self.skip_until_measurement_finished()
-        return False, 0
+        state_change, self.running_action = await self.skip_until_get_action_id()
+        temp_state_change = await self.skip_until_measurement_finished()
+        state_change = state_change or temp_state_change
+        return state_change, False, 0
 
     async def start_examination(self):
         return await self.start_action("Blutzucker analysieren")
@@ -212,15 +228,17 @@ class PatientGroup:
         rotate = lambda list_type: list_type.append(list_type.pop(0))
         rotate(self.patient_queue)
         rotate(self._patients_step)
-        return False, -1
+        return False, False, -1
 
     async def await_finishing(self):
         some_list = [1, 2, 3, 4, 5]
         action_finished = False
+        state_change = False
         while not action_finished:
-            action_list = await self.skip_until_message(
+            temp_state_change, action_list = await self.skip_until_message(
                 self.get_current_patient_ws(), "action-list"
             )
+            state_change = state_change or temp_state_change
             action_list = json.loads(action_list).get("actions")
             running_action = next(
                 (
@@ -232,31 +250,33 @@ class PatientGroup:
             )
             action_finished = running_action.get("actionStatus") == "FI"
         self.running_action = None
-        return False, 0
+        return state_change, False, 0
 
     async def current_time(self):
         self.examination_start = datetime.datetime.now()
-        return False, 0
+        return False, False, 0
 
     async def activate_next_group(self):
-        return True, 0
+        return False, True, 0
 
     async def pass_time(self):
         time_to_pass = 4.0
         timedelta = (datetime.datetime.now() - self.examination_start).total_seconds()
         if timedelta < time_to_pass:
             await asyncio.sleep(time_to_pass - timedelta)
-        return False, 0
+        return False, False, 0
 
     async def unassign_personnel(self):
+        state_change = False
         for personnel_id in self.connected_personnel_ids:
             await self.get_current_patient_ws().send(
                 json.dumps(
                     {"messageType": "personnel-release", "personnelId": personnel_id}
                 )
             )
-            await self.skip_until_measurement_finished()
-        return False, 0
+            temp_state_change = await self.skip_until_measurement_finished()
+            state_change = state_change or temp_state_change
+        return state_change, False, 0
 
     async def unassign_material(self):
         await self.get_current_patient_ws().send(
@@ -264,21 +284,21 @@ class PatientGroup:
                 {"messageType": "material-release", "materialId": self.material_id}
             )
         )
-        await self.skip_until_measurement_finished()
-        return False, 0
+        state_change = await self.skip_until_measurement_finished()
+        return state_change, False, 0
 
     async def start_wrong_action(self):
         return await self.start_action("ZVK")
 
-    async def cancel_wrong_action(self):
+    async def cancel_current_action(self):
         await self.get_current_patient_ws().send(
             json.dumps(
                 {"messageType": "action-cancel", "actionId": self.running_action}
             )
         )
-        await self.skip_until_measurement_finished()
+        state_change = await self.skip_until_measurement_finished()
         self.running_action = None
-        return False, 0
+        return state_change, False, 0
 
     async def start_actual_action(self):
         return await self.start_action("Turniquet")
@@ -299,12 +319,13 @@ class PatientGroupTemplmonActive(PatientGroup):
         self.trainer_ws = trainer_ws
 
     async def skip_until_measurement_finished(self):
-        await asyncio.gather(
+        r_1, r_2 = await asyncio.gather(
             self.skip_until_message(
                 self.get_current_patient_ws(), "patient-measurement-finished"
             ),
             self.skip_until_message(self.trainer_ws, "trainer-measurement-finished"),
         )
+        return r_1[0] or r_2[0]
 
 
 def login_trainer(username, password):
@@ -458,18 +479,6 @@ async def start_exercise(
         action_list = await patient_ws.recv()
 
 
-async def ghost_consume(
-    idle_ws: list[websockets.WebSocketClientProtocol], expected_type=None
-):
-    for ws in idle_ws:
-        message = await ws.recv()
-        message_type = json.loads(message).get("messageType")
-        if expected_type and message_type != expected_type:
-            raise ValueError(
-                f"Expected message type {expected_type}, got {message_type}"
-            )
-
-
 async def main():
     # Login via HTTP to get tokens before WebSocket connections
     trainer_name = f"trainer_created_{datetime.datetime.now()}"
@@ -495,14 +504,14 @@ async def main():
         patient_group_instance = PatientGroupTemplmonActive(
             ["1001", "1005"] * (patient_count // 2),
             [patients_ws[i_1], patients_ws[i_2]],
-            trainer_ws,
             [personnel_ids[i_1], personnel_ids[i_2]],
             material_ids[i],
+            trainer_ws,
         )
-        PatientGroup.register_for_simulation(patient_group_instance)
+        PatientGroupTemplmonActive.register_for_simulation(patient_group_instance)
     await start_exercise(trainer_ws, patients_ws)
     try:
-        await PatientGroup.execute_simulation()
+        await PatientGroupTemplmonActive.execute_simulation()
     except Exception as e:
         print(e)
     finally:

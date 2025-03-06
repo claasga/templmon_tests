@@ -102,7 +102,6 @@ class ChannelNotifier:
 
     @classmethod
     def _notify_exercise_update(cls, exercise):
-        print("Cn: sending exercise update")
         channel = cls.get_group_name(exercise)
         event = {
             "type": ChannelEventTypes.EXERCISE_UPDATE,
