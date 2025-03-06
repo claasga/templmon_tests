@@ -41,6 +41,7 @@ class RuleRunner:
         self._lazy_pending_inputs = None
         self._initialized_stdin = False
         self._initialize_log_rule()
+        self.output_read = None
 
     def __del__(self):
         pass
@@ -95,13 +96,18 @@ class RuleRunner:
                 self.log_transformer.generate_commit(monpolified_log_entry)
             )
             self._initialized_stdin = True
+
         if self.monpoly.stdin:
             await self.pending_inputs.put(log_type)
             print(
                 f"RR: Queue size is now {self.pending_inputs.qsize()}, produced: {log_type}"
             )
             print(f"RR: Sending: {monpolified_log_entry}")
+            self.output_read = asyncio.Event()
             await self._send_and_process(monpolified_log_entry)
+
+            await self.output_read.wait()
+            self.output_read = asyncio.Event()
             await self.pending_inputs.put(MonpolyLogEntry.COMMIT)
             print(
                 f"RR: Queue size is now {self.pending_inputs.qsize()}, produced: {MonpolyLogEntry.COMMIT}"
@@ -112,6 +118,7 @@ class RuleRunner:
             await self._send_and_process(
                 self.log_transformer.generate_commit(monpolified_log_entry)
             )
+            await self.output_read.wait()
             # print("*************************************")
 
             # print(

@@ -21,6 +21,8 @@ class MonpolyLogEntry:
 
 
 class LogTransformer:
+    start_time = None
+
     @classmethod
     def determine_log_type(cls, log_entry: le.LogEntry):
         l_types = le.LogEntry.TYPES
@@ -67,7 +69,11 @@ class LogTransformer:
 
     @classmethod
     def _generate_timestamp(cls, log_entry: le.LogEntry):
-        return str(log_entry.timestamp.timestamp())
+        return str(
+            int(
+                (log_entry.timestamp.timestamp() - cls.start_time.timestamp()) * 1000000
+            )
+        )
 
     @classmethod
     def transform(cls, log_entry: le.LogEntry):

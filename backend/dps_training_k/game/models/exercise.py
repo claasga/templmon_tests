@@ -1,3 +1,4 @@
+from django.utils import timezone
 from django.conf import settings
 from django.db import models
 
@@ -8,6 +9,7 @@ from .scheduled_event import ScheduledEvent
 from .log_entry import LogEntry
 from ..templmon.rule_generators import LogRule
 from ..templmon.rule_runner import RuleRunner
+from ..templmon.log_transformer import LogTransformer
 
 
 class Exercise(NonEventable, models.Model):
@@ -54,6 +56,7 @@ class Exercise(NonEventable, models.Model):
     def start_exercise(self):
         from .patient_instance import PatientInstance
 
+        LogTransformer.start_time = timezone.now()
         owned_patients = PatientInstance.objects.filter(exercise=self)
         for time_offset, patient in enumerate(owned_patients):
             # we don't start all patients at once to balance out the work for our celery workers

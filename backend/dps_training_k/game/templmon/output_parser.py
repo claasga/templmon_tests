@@ -237,10 +237,9 @@ class OutputParser:
             if decoded_line[0] != "@":
                 if decoded_line[:2] != "At":
                     print(f"OP: WARNING: {decoded_line[:-1]}")
-                    corresponding_input = (
-                        await self.pending_inputs_owner.pending_inputs.get()
-                    )
                 continue
+
+            self.pending_inputs_owner.output_read.set()
             print(f"OP: got {decoded_line[:-1]}")
             corresponding_input = await self.pending_inputs_owner.pending_inputs.get()
             print(

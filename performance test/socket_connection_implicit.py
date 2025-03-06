@@ -489,7 +489,7 @@ async def main():
     if not trainer_token:
         raise ConnectionRefusedError("Login failed for one or more clients; aborting")
     trainer_ws = await generate_trainer_websocket(trainer_token)
-    patient_count = 6
+    patient_count = 60
     area_size = 2
     patient_ids, personnel_ids, material_ids, exercise_id = await setup_exercise(
         trainer_ws, patient_count, area_size
