@@ -22,7 +22,12 @@ class ViolationTracker:
 
 class SingularViolationTracker(ViolationTracker):
     async def update_violations(
-        self, timestamp, timepoint, violations: list[dict], input_type
+        self,
+        timestamp,
+        timepoint,
+        violations: list[dict],
+        input_type,
+        measurement_begin,
     ):
         for violation in violations:
             await self._violation_listener.dispatch_singular_violation(
@@ -35,7 +40,11 @@ class SingularViolationTracker(ViolationTracker):
                 input_type,
             )
         await self._violation_listener.dispatch_processing_finished(
-            self._session_id, self._rule_name, self._template_name, input_type
+            self._session_id,
+            self._rule_name,
+            self._template_name,
+            input_type,
+            measurement_begin,
         )
 
 
@@ -102,7 +111,12 @@ class DurationalViolationTracker(ViolationTracker):
             )
 
     async def update_violations(
-        self, timestamp, timepoint, violations: list[dict], input_type
+        self,
+        timestamp,
+        timepoint,
+        violations: list[dict],
+        input_type,
+        measurement_begin,
     ):
         """Assumes that violations are unique. For MonPoly they are"""
         unfinished_keys = list(self.current_unfinished_violations.keys())
@@ -112,7 +126,11 @@ class DurationalViolationTracker(ViolationTracker):
                 timestamp, timepoint, unfinished_keys, input_type
             )
             await self._violation_listener.dispatch_processing_finished(
-                self._session_id, self._rule_name, self._template_name, input_type
+                self._session_id,
+                self._rule_name,
+                self._template_name,
+                input_type,
+                measurement_begin,
             )
             return
 
@@ -162,7 +180,11 @@ class DurationalViolationTracker(ViolationTracker):
             timestamp, timepoint, violations_to_change, input_type
         )
         await self._violation_listener.dispatch_processing_finished(
-            self._session_id, self._rule_name, self._template_name, input_type
+            self._session_id,
+            self._rule_name,
+            self._template_name,
+            input_type,
+            measurement_begin,
         )
 
 
@@ -241,7 +263,9 @@ class OutputParser:
 
             self.pending_inputs_owner.output_read.set()
             print(f"OP: got {decoded_line[:-1]}")
-            corresponding_input = await self.pending_inputs_owner.pending_inputs.get()
+            corresponding_input, measurement_begin = (
+                await self.pending_inputs_owner.pending_inputs.get()
+            )
             print(
                 f"OP: Queue size is now {self.pending_inputs_owner.pending_inputs.qsize()}, consumed: {corresponding_input}"
             )
@@ -262,7 +286,11 @@ class OutputParser:
             fullfilling_assignments = get_fullfilling_assignments(parts[2])
 
             await self.output_receiver.update_violations(
-                timestamp, timepoint, fullfilling_assignments, corresponding_input
+                timestamp,
+                timepoint,
+                fullfilling_assignments,
+                corresponding_input,
+                measurement_begin,
             )
 
 

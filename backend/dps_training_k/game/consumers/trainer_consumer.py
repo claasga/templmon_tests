@@ -18,6 +18,8 @@ from ..channel_notifications import (
 from ..serializers import LogEntrySerializer
 from ..templmon.rule_generators import *
 from ..templmon.rule_runner import RuleRunner, InvalidFormulaError
+import os
+import json
 
 
 class TrainerConsumer(AbstractConsumer):
@@ -153,6 +155,15 @@ class TrainerConsumer(AbstractConsumer):
             self.send_available_materials()
             if self.exercise:
                 self.send_past_logs()
+
+    def save_measurements(self):
+        directory = os.path.join(
+            settings.BASE_DIR, "measurements", f"Exercise {self.exercise_frontend_id}"
+        )
+        os.makedirs(directory, exist_ok=True)
+        file_path = os.path.join(directory, "latencies.json")
+        with open(file_path, "w") as f:
+            json.dump(self.patient_instances_latencies, f, default=list)
 
     # ------------------------------------------------------------------------------------------------------------------------------------------------
     # API Methods, open to client.
@@ -488,8 +499,10 @@ class TrainerConsumer(AbstractConsumer):
         print(event)
 
     def violation_processing_finished_event(self, event):
+        current_time = time.perf_counter()
         logtype = event["input_type"]
         rule_id = f'{event["template_name"]}_{event["rule_name"]}'
+        monpoly_measuring_start = float(event["monpoly_measuring_start"])
         print(
             f"TC: measured_logtype == {patient_consumer.measuring_instance.measured_logtype if patient_consumer.measuring_instance else None}"
         )
@@ -507,9 +520,13 @@ class TrainerConsumer(AbstractConsumer):
         self.received_rules_count += 1
         if self.received_rules_count == 1:
             self.patient_instances_latencies[currently_tested_patient].append({})
+
         self.patient_instances_latencies[currently_tested_patient][-1][rule_id] = (
-            time.perf_counter() - measurement_start
+            current_time,
+            current_time - measurement_start,
+            current_time - monpoly_measuring_start,
         )
+        print(f"TC: current measurments: {self.patient_instances_latencies}")
         if self.received_rules_count == self.rules_count:
             self.received_rules_count = 0
             patient_consumer.measuring_instance.finish_measurement()

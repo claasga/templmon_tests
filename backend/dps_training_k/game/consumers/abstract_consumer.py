@@ -55,6 +55,18 @@ class AbstractConsumer(JsonWebsocketConsumer, ABC):
     def connect(self):
         pass
 
+    @abstractmethod
+    def save_measurements(self):
+        pass
+
+    def disconnect(self, code):
+        try:
+            self.save_measurements()
+        except Exception as exc:
+            print("Error during save_measurements on disconnect:", exc)
+        code = self.ClosureCodes.UNKNOWN if not code else code
+        super().disconnect(code)
+
     def send_event(self, event_type, **kwargs):
         """
         Wrapper to send_json() in order to always have the same structure: at least a messageType and often content.

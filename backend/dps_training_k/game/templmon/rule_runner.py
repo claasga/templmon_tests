@@ -1,4 +1,5 @@
 import os
+import time
 import asyncio
 import threading
 import subprocess
@@ -98,7 +99,7 @@ class RuleRunner:
             self._initialized_stdin = True
 
         if self.monpoly.stdin:
-            await self.pending_inputs.put(log_type)
+            await self.pending_inputs.put((log_type, time.perf_counter()))
             print(
                 f"RR: Queue size is now {self.pending_inputs.qsize()}, produced: {log_type}"
             )
@@ -108,7 +109,7 @@ class RuleRunner:
 
             await self.output_read.wait()
             self.output_read = asyncio.Event()
-            await self.pending_inputs.put(MonpolyLogEntry.COMMIT)
+            await self.pending_inputs.put((MonpolyLogEntry.COMMIT, None))
             print(
                 f"RR: Queue size is now {self.pending_inputs.qsize()}, produced: {MonpolyLogEntry.COMMIT}"
             )

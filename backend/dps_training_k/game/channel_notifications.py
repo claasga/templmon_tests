@@ -790,7 +790,7 @@ class ViolationDispatcher:
 
     @classmethod
     async def dispatch_processing_finished(
-        cls, session_id, rule_name, template_name, input_type
+        cls, session_id, rule_name, template_name, input_type, monpoly_measuring_start
     ):
         channel = cls.get_group_name(session_id)
         event = {
@@ -798,5 +798,6 @@ class ViolationDispatcher:
             "rule_name": rule_name,
             "template_name": template_name,
             "input_type": input_type,
+            "monpoly_measuring_start": monpoly_measuring_start,
         }
         await _async_notify_group(channel, event)
