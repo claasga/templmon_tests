@@ -155,15 +155,21 @@ class TrainerConsumer(AbstractConsumer):
             self.send_available_materials()
             if self.exercise:
                 self.send_past_logs()
+        self.directory_path = os.path.join(
+            self.MEASUREMENTS_DIRECTORY,
+            f"measurements_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}",
+        )
+        os.makedirs(self.directory_path, mode=0o666, exist_ok=True)
 
     def save_measurements(self):
-        directory = os.path.join(
-            settings.BASE_DIR, "measurements", f"Exercise {self.exercise_frontend_id}"
-        )
-        os.makedirs(directory, exist_ok=True)
-        file_path = os.path.join(directory, "latencies.json")
+        print(f"TC: saving measurements: {self.patient_instances_latencies}")
+
+        file_path = os.path.join(self.directory_path, "trainer_latencies.json")
+        print(f"TC: file path: {file_path}")
         with open(file_path, "w") as f:
             json.dump(self.patient_instances_latencies, f, default=list)
+        os.chmod(file_path, 0o666)
+        print(f"TC: saved measurements to {file_path}")
 
     # ------------------------------------------------------------------------------------------------------------------------------------------------
     # API Methods, open to client.
@@ -499,6 +505,8 @@ class TrainerConsumer(AbstractConsumer):
         print(event)
 
     def violation_processing_finished_event(self, event):
+        if self.closed:
+            return
         current_time = time.perf_counter()
         logtype = event["input_type"]
         rule_id = f'{event["template_name"]}_{event["rule_name"]}'

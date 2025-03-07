@@ -20,7 +20,7 @@ from .config import *
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
-
+print(f"The measurement directory would be: {os.path.join(BASE_DIR, "game", "templmon", "measurements")}")
 # import env file
 env = Env()
 Env.read_env(os.path.join(BASE_DIR, ".env.dev"))

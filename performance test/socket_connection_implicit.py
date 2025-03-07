@@ -82,17 +82,32 @@ class PatientGroup:
         cls.groups.append(patient_group)
 
     @classmethod
-    async def execute_simulation(cls):
+    async def execute_simulation(cls, trainer_ws):
         if not cls.groups:
             raise ValueError(
                 "Simulations cannot be started without registered patient groups!"
             )
 
-        cls.simulation_end = datetime.datetime.now() + datetime.timedelta(minutes=10.0)
+        cls.simulation_end = datetime.datetime.now() + datetime.timedelta(seconds=7.0)
         i = 0
-        while datetime.datetime.now() < cls.simulation_end:
-            await cls.groups[i]._execute_plan()
-            i = (i + 1) % len(cls.groups)
+        try:
+            while datetime.datetime.now() < cls.simulation_end:
+                await cls.groups[i]._execute_plan()
+                i = (i + 1) % len(cls.groups)
+        except Exception as e:
+            print(e)
+        finally:
+            await trainer_ws.send(json.dumps({"messageType": "exercise-end"}))
+            message = await trainer_ws.recv()
+            message_type = json.loads(message).get("messageType")
+            while message_type != "exercise-end":
+                message = await trainer_ws.recv()
+                message_type = json.loads(message).get("messageType")
+                if message_type == "failure":
+                    raise ValueError(
+                        f"Expected message type 'exercise-end', got failure with {json.loads(message).get('message')}"
+                    )
+            cls.groups.clear()
 
     def get_current_patient_ws(self):
         return self.patient_queue[0][1]
@@ -385,7 +400,28 @@ async def setup_exercise(
     exercise_json = await trainer_ws.recv()
     exercise = json.loads(exercise_json)
     print(exercise)
-
+    await trainer_ws.send(json.dumps({"messageType": "area-add"}))
+    exercise_json = await trainer_ws.recv()
+    exercise = json.loads(exercise_json)
+    print(exercise)
+    idle_areID = int(exercise.get("exercise").get("areas")[-1].get("areaId"))
+    await trainer_ws.send(
+        json.dumps(
+            {"messageType": "area-rename", "areaId": idle_areID, "areaName": "X"}
+        )
+    )
+    exercise_json = await trainer_ws.recv()
+    await trainer_ws.send(
+        json.dumps(
+            {
+                "messageType": "patient-add",
+                "areaId": idle_areID,
+                "patientName": f"Idle Patient {idle_areID}",
+                "code": 1005,
+            }
+        )
+    )
+    exercise_json = await trainer_ws.recv()
     patient_ids = []
     exercise_json = None
     for i in range(0, int(patient_count / 2)):
@@ -479,44 +515,47 @@ async def start_exercise(
         action_list = await patient_ws.recv()
 
 
-async def main():
+async def template_test(test_configurations, template_less=False):
     # Login via HTTP to get tokens before WebSocket connections
-    trainer_name = f"trainer_created_{datetime.datetime.now()}"
-    print(trainer_name)
-    trainer_token = login_trainer(trainer_name, "trainer_password")
+    PatientGroupClass = PatientGroup if template_less else PatientGroupTemplmonActive
+    for test_configuration in test_configurations:
+        trainer_name = f"trainer_created_{datetime.datetime.now()}"
+        print(trainer_name)
+        trainer_token = login_trainer(trainer_name, "trainer_password")
 
-    # Check if login was successful
-    if not trainer_token:
-        raise ConnectionRefusedError("Login failed for one or more clients; aborting")
-    trainer_ws = await generate_trainer_websocket(trainer_token)
-    patient_count = 60
-    area_size = 2
-    patient_ids, personnel_ids, material_ids, exercise_id = await setup_exercise(
-        trainer_ws, patient_count, area_size
-    )
-    tokens = [login_patient(exercise_id, patient_id) for patient_id in patient_ids]
-    patients_ws = await asyncio.gather(
-        *[generate_patient_websocket(token) for token in tokens]
-    )
-    for i in range(len(material_ids)):
-        i_1 = i * 2
-        i_2 = (i * 2) + 1
-        patient_group_instance = PatientGroupTemplmonActive(
-            ["1001", "1005"] * (patient_count // 2),
-            [patients_ws[i_1], patients_ws[i_2]],
-            [personnel_ids[i_1], personnel_ids[i_2]],
-            material_ids[i],
-            trainer_ws,
+        # Check if login was successful
+        if not trainer_token:
+            raise ConnectionRefusedError(
+                "Login failed for one or more clients; aborting"
+            )
+        trainer_ws = await generate_trainer_websocket(trainer_token)
+        patient_count, area_size = test_configuration
+        patient_ids, personnel_ids, material_ids, exercise_id = await setup_exercise(
+            trainer_ws, patient_count, area_size
         )
-        PatientGroupTemplmonActive.register_for_simulation(patient_group_instance)
-    await start_exercise(trainer_ws, patients_ws)
-    try:
-        await PatientGroupTemplmonActive.execute_simulation()
-    except Exception as e:
-        print(e)
-    finally:
-        await trainer_ws.send(json.dumps({"messageType": "exercise-stop"}))
+        tokens = [login_patient(exercise_id, patient_id) for patient_id in patient_ids]
+        patients_ws = await asyncio.gather(
+            *[generate_patient_websocket(token) for token in tokens]
+        )
+        for i in range(len(material_ids)):
+            i_1 = i * 2
+            i_2 = (i * 2) + 1
+            args = [
+                ["1001", "1005"] * (patient_count // 2),
+                [patients_ws[i_1], patients_ws[i_2]],
+                [personnel_ids[i_1], personnel_ids[i_2]],
+                material_ids[i],
+            ]
+            if not template_less:
+                args.append(trainer_ws)
+            patient_group_instance = PatientGroupClass(*args)
+            PatientGroupClass.register_for_simulation(patient_group_instance)
+        await start_exercise(trainer_ws, patients_ws)
+        try:
+            await PatientGroupClass.execute_simulation(trainer_ws)
+        except Exception as e:
+            print(e)
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(template_test([(2, 2), (10, 2)]))

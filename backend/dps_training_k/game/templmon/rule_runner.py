@@ -92,7 +92,7 @@ class RuleRunner:
         if (
             not self._initialized_stdin
         ):  # Race condition, ignored because we don't currently process things in parallel
-            await self.pending_inputs.put(MonpolyLogEntry.COMMIT)
+            await self.pending_inputs.put((MonpolyLogEntry.COMMIT, None))
             await self._send_and_process(
                 self.log_transformer.generate_commit(monpolified_log_entry)
             )

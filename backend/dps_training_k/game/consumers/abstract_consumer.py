@@ -1,10 +1,13 @@
 import traceback
+
+import os
 from abc import ABC, abstractmethod
 
 from asgiref.sync import async_to_sync
 from channels.generic.websocket import JsonWebsocketConsumer
 from rest_framework.authtoken.models import Token
 
+from configuration import settings
 from game.models import Exercise
 from game.serializers.exercise_serializer import ExerciseSerializer
 from template.models import Action, PatientInformation, Material
@@ -44,12 +47,17 @@ class AbstractConsumer(JsonWebsocketConsumer, ABC):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.closed = False
         self.exercise_frontend_id = ""
         self.exercise = None
         self.REQUESTS_MAP = {
             self.IncomingMessageTypes.TEST_PASSTHROUGH: (self.handle_test_passthrough,),
         }
         self.user = None
+
+    MEASUREMENTS_DIRECTORY = os.path.join(
+        settings.BASE_DIR, "game", "templmon", "measurements"
+    )
 
     @abstractmethod
     def connect(self):
@@ -59,7 +67,24 @@ class AbstractConsumer(JsonWebsocketConsumer, ABC):
     def save_measurements(self):
         pass
 
+    @classmethod
+    def _all_subdirs_of(cls, b="."):
+        result = []
+        for d in os.listdir(b):
+            bd = os.path.join(b, d)
+            if os.path.isdir(bd):
+                result.append(bd)
+        return result
+
+    @classmethod
+    def newest_folder(cls):
+        return max(
+            cls._all_subdirs_of(cls.MEASUREMENTS_DIRECTORY), key=os.path.getmtime
+        )
+
     def disconnect(self, code):
+        print("disconnecting")
+        self.closed = True
         try:
             self.save_measurements()
         except Exception as exc:
@@ -72,6 +97,8 @@ class AbstractConsumer(JsonWebsocketConsumer, ABC):
         Wrapper to send_json() in order to always have the same structure: at least a messageType and often content.
         Allows some other high level information in the kwargs.
         """
+        if self.closed:
+            return
         d = {"messageType": event_type}
         for key, value in kwargs.items():
             d[key] = value
@@ -160,12 +187,6 @@ class AbstractConsumer(JsonWebsocketConsumer, ABC):
     def group_send(self, group_name, event):
         async_to_sync(self.channel_layer.group_send)(group_name, event)
 
-    def disconnect(self, code):
-        # if self.user:
-        #     self.user.clear_channel_name()
-        code = self.ClosureCodes.UNKNOWN if not code else code
-        super().disconnect(code)
-
     def authenticate(self, token):
         try:
             token = Token.objects.get(key=token)
@@ -238,7 +259,7 @@ class AbstractConsumer(JsonWebsocketConsumer, ABC):
         self.send_event(self.OutgoingMessageTypes.EXERCISE_START)
 
     def resource_assignment_event(self, event):
-        """Needs to be implemented here to send this event on_exercise_start via channel_notifications to patient_consumer"""
+        """Needs to be  here to send this event on_exercise_start via channel_notifications to patient_consumer"""
         pass
 
     def personnel_assigned_event(self, event):

@@ -1,5 +1,7 @@
 from urllib.parse import parse_qs
 import time
+import os
+import json
 from django.db.models import Q
 
 from game.models import (
@@ -185,6 +187,16 @@ class PatientConsumer(AbstractConsumer):
         else:
             self.close()
 
+    def save_measurements(self):
+        print(f"PC: saving measurements: {self.measured_times}")
+        file_path = os.path.join(
+            self.newest_folder(), f"{self.patient_frontend_id}_latencies.json"
+        )
+        print(f"PC: saving to {file_path}")
+        with open(file_path, "w") as f:
+            json.dump(self.measured_times, f)
+        print(f"PC: saved measurements to {file_path}")
+
     # ------------------------------------------------------------------------------------------------------------------------------------------------
     # API Methods, open to client.
     # These methods are not allowed to be called directly. If you want to call them from the backend, go via self.receive_json()
@@ -352,7 +364,8 @@ class PatientConsumer(AbstractConsumer):
         )
 
     def action_list_event(self, event=None):
-
+        if self.closed:
+            return
         actions = []
 
         """all action_instances where either the patient_instance is self.patient_instance or 
@@ -428,6 +441,8 @@ class PatientConsumer(AbstractConsumer):
         super().send_exercise_event(event)
 
     def resource_assignment_event(self, event=None):
+        if self.closed:
+            return
         end_time = self._stop_measurement()
 
         patient_instance = self.get_patient_instance()
@@ -452,6 +467,8 @@ class PatientConsumer(AbstractConsumer):
             self.send_event(self.PatientOutgoingTestTypes.PATIENT_MEASUREMENT_FINISHED)
 
     def triage_update_event(self, event):
+        if self.closed:
+            return
         end_time = self._stop_measurement()
         if end_time:
             self.send_event(self.PatientOutgoingTestTypes.PATIENT_MEASUREMENT_FINISHED)
