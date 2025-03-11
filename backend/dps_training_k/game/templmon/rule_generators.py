@@ -558,6 +558,8 @@ class InteractedChecker(LogRule):
     OR 
         (EXISTS personnel_id. assigned_personnel(personnel_id, patient_id))
     OR
+        (EXISTS device_id. assigned_material(device_id, patient_id))
+    OR
         (EXISTS origin, target. patient_relocated(patient_id, origin, target))
     OR 
         (EXISTS action_id. action_started(patient_id, action_id))
@@ -571,6 +573,8 @@ class InteractedChecker(LogRule):
             ((EXISTS level. triage(patient_id, level)) 
         OR 
             (EXISTS personnel_id. assigned_personnel(personnel_id, patient_id))
+        OR
+            (EXISTS device_id. assigned_material(device_id, patient_id))
         OR
             (EXISTS origin, target. patient_relocated(patient_id, origin, target))
         OR 
