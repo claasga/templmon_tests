@@ -199,7 +199,9 @@ class RuleRunner:
             capture_output=True,
             text=True,
         )
-        print(terminated_process.stdout)
+        print(
+            f"Output: {terminated_process.stdout}, Error: {terminated_process.stderr}"
+        )
         if success_message in terminated_process.stdout:
             return (
                 True,
@@ -219,21 +221,25 @@ class RuleRunner:
             capture_output=True,
             text=True,
         )
-        print(terminated_process.stdout)
+        print(
+            f"Output: {terminated_process.stdout}, Error: {terminated_process.stderr}"
+        )
+
         if success_message in terminated_process.stdout:
             return (
                 True,
                 False,
                 self._extract_environment_variables(terminated_process.stdout),
             )
-        return False, None, None
+        return False, None, terminated_process.stdout
 
     def _initialize_log_rule(self):
-        self.valid, self.rewrite_allowed, self.free_variables = (
-            self._environment_infos()
-        )
+        self.valid, self.rewrite_allowed, environment = self._environment_infos()
         if not self.valid:
-            raise InvalidFormulaError(f"Invalid formula: {self.log_rule.rule_name}")
+            raise InvalidFormulaError(
+                f"Invalid formula {self.log_rule.template_name}, {self.log_rule.rule_name}: {environment}"
+            )
+        self.free_variables = environment
         return self.free_variables
 
     def start(self):

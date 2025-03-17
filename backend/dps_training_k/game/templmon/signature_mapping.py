@@ -4,7 +4,7 @@ import re
 class RuleProperty:
     class MPT:
         string = "string"
-        integer = "integer"
+        integer = "int"
         float = "float"
 
     class NameType:
@@ -30,9 +30,8 @@ class RuleProperty:
     DEVICE = NameType("device", MPT.string)
     TRIAGE = NameType("triage", MPT.string)
     INJURY_LEVEL = NameType("injury_level", MPT.string)
-    AIRWAY = NameType("airway", MPT.string)
-    BREATHING = NameType("breathing", MPT.string)
-    CIRCULATION = NameType("circulation", MPT.string)
+    BREATHING = NameType("breathing", MPT.integer)
+    CIRCULATION = NameType("circulation", MPT.integer)
     BEWUSSTSEIN = NameType("consciousness", MPT.string)
     PUPILLEN = NameType("pupils", MPT.string)
     PSYCHE = NameType("psyche", MPT.string)
@@ -61,8 +60,8 @@ class LogType:
     def compare_values_mfotl(self, key_values):
         return " AND ".join(
             [
-                f"{self.get_variable(key)} = {self._monpolify_string(value) if isinstance(value, str) else value}"
-                for key, value in key_values.items()
+                f"{self.get_variable(key)} {operator} {self._monpolify_string(value) if isinstance(value, str) else value}"
+                for key, (operator, value) in key_values.items()
                 if self.get_variable(key)[0] != '"'
             ]
         )
@@ -177,15 +176,15 @@ class UnassignedMaterial(LogType):
 class ChangedState(LogType):
     _BASE_VARIABLES = [
         RuleProperty.PATIENT,
-        RuleProperty.AIRWAY,
         RuleProperty.CIRCULATION,
+        RuleProperty.BREATHING,
         RuleProperty.DEAD,
     ]
     MONPOLY_NAME = "changed_state"
 
     @classmethod
-    def log(cls, patient, airway, circulation, dead: bool):
-        return cls._log([patient, airway, circulation, dead])
+    def log(cls, patient, circulation, breathing, dead: bool):
+        return cls._log([patient, circulation, breathing, dead])
 
 
 class PatientArrived(LogType):

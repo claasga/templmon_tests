@@ -332,6 +332,82 @@ class SymptomCombinationRule(LogRule):
         timeframe,
         vital_parameters: dict = None,
         examination_results: dict = None,
+        fullfillment=True,
+    ):
+        if fullfillment:
+            return cls.generate_fullfillment(
+                name, action, timeframe, vital_parameters, examination_results
+            )
+        else:
+            return cls.generate_violations(
+                name, action, timeframe, vital_parameters, examination_results
+            )
+
+    @classmethod
+    def generate_fullfillment(
+        cls,
+        name,
+        action,
+        timeframe,
+        vital_parameters: dict = None,
+        examination_results: dict = None,
+    ):
+        examination = examination_results.keys()[0]
+        result = examination_results[examination]
+        vital_parameter_comparison = f"{vital_parameters.keys()[0]} {vital_parameters.values()[0][0]} {vital_parameters.values()[0][1] if isinstance(vital_parameters.values()[0][1], str) else vital_parameters.values()[0]}"
+        formula = f"""
+         (EXISTS location, start_triage, wound. ONCE[0,*] patient_arrived(patient_id, location, start_triage, wound))
+AND
+    patient_action_finished(patient_id, {sm.LogType._monpolify_string(action)})
+AND
+            (NOT patient_action_started(patient_id, {sm.LogType._monpolify_string(action)})
+        SINCE
+            ((patient_action_started(patient_id, {sm.LogType._monpolify_string(action)})
+        AND
+
+            ((NOT ((PREV patient_action_started(patient_id, {sm.LogType._monpolify_string(action)}))
+        OR
+            (EXISTS new_results. patient_examination_result(patient_id, {sm.LogType._monpolify_string(examination)}, new_results))
+        OR
+            (EXISTS c,d, e. changed_state(patient_id, c,d, e)))
+    SINCE[0,{timeframe}]
+                        ((patient_examination_result(patient_id, {sm.LogType._monpolify_string(examination)}, results)
+                    AND
+                        results = {sm.LogType._monpolify_string(result)}
+            AND
+                    (NOT(EXISTS c,d, e. changed_state(patient_id, c,d, e))
+                SINCE[0,*] 
+                        (changed_state(patient_id, circulation, breathing, is_dead)
+                    AND
+                        {vital_parameter_comparison})))
+        OR
+                    (NOT(EXISTS re. patient_examination_result(patient_id, {sm.LogType._monpolify_string(examination)}, re))
+                SINCE[0,*] 
+                        (patient_examination_result(patient_id, {sm.LogType._monpolify_string(examination)}, results)
+                    AND
+                        results = {sm.LogType._monpolify_string(result)}))
+            AND
+                        changed_state(patient_id, circulation, breathing, is_dead)
+                    AND
+                        {vital_parameter_comparison}))))))
+                        """
+        return [
+            cls.create(
+                formula,
+                "symptom_combination",
+                SingularViolationType(),
+                name,
+            ),
+        ]
+
+    @classmethod
+    def generate_violations(
+        cls,
+        name,
+        action,
+        timeframe,
+        vital_parameters: dict = None,
+        examination_results: dict = None,
     ):
         if not vital_parameters and not examination_results:
             raise ValueError("No parameters to monitor")
@@ -360,7 +436,7 @@ class SymptomCombinationRule(LogRule):
                     RP.EXAMINATION.name, sm.LogType._monpolify_string(key)
                 )
             examination_results_base_subs = [
-                f"{form.mfotl()}{(' AND ' + cmp) if (cmp := form.compare_values_mfotl({RP.EXAMINATION.name: value})) else ''}"
+                f"{form.mfotl()}{(' AND ' + cmp) if (cmp := form.compare_values_mfotl({RP.EXAMINATION.name: ("=", value)})) else ''}"
                 for form, (key, value) in zip(
                     examination_formulas, examination_results.items()
                 )
@@ -443,9 +519,9 @@ AND
         RECENT_EXAMINATIONS_CONSTRUCT = [
             f"""((NOT ((EXISTS {c_form.bind([RP.PATIENT.name], False)}. {c_form.mfotl()})
             OR
-                (EXISTS {c_action_started.bind([RP.PATIENT.name], False)}. {c_action_started.mfotl()})))
+                ({action_started.mfotl()})))
         SINCE[0,*]
-                {form.mfotl()}{' AND ' + cmp if (cmp:=form.compare_values_mfotl({RP.RESULT.name: value})) else ''})"""
+                {form.mfotl()}{' AND ' + cmp if (cmp:=form.compare_values_mfotl({RP.RESULT.name: ("=", value)})) else ''})"""
             for form, c_form, value in list(
                 zip(
                     examination_formulas,
@@ -455,8 +531,8 @@ AND
             )
         ]
         RECENT_STATES_CONSTRUCT = f"""(NOT ((EXISTS {c_changed_state.bind([RP.PATIENT.name], False)}. {c_changed_state.mfotl()})
-            AND 
-                (EXISTS {c_action_started_2.bind([RP.PATIENT.name], False)}. {c_action_started_2.mfotl()}))
+            OR 
+                ( {action_started.mfotl()}))
         SINCE[0,*]
                 ({changed_state.mfotl()} AND {changed_state.compare_values_mfotl(vital_parameters)}))"""
         wrong_order_rule = f"""
@@ -464,10 +540,10 @@ AND
 AND
         {action_started_2.mfotl()}
     AND
-        NOT {action_started_2.compare_values_mfotl({RP.ACTION.name: action})})
+        NOT {action_started_2.compare_values_mfotl({RP.ACTION.name: ("=", action)})})
 AND
-    PREV
-                ({" AND ".join(RECENT_EXAMINATIONS_CONSTRUCT + [RECENT_STATES_CONSTRUCT])})"""
+    
+    ({" AND ".join(RECENT_EXAMINATIONS_CONSTRUCT + [RECENT_STATES_CONSTRUCT])})"""
 
         return [
             cls.create(
@@ -494,6 +570,15 @@ AND
 
 
 class TriageGoalRule(LogRule):
+    @classmethod
+    def generate(cls, name, patient_id, target_time, target_level, fullfillment=True):
+        if fullfillment:
+            return cls.generate_fullfillment(
+                name, patient_id, target_time, target_level
+            )
+        else:
+            return cls.generate_violation(name, patient_id, target_time, target_level)
+
     @classmethod
     def generate_fullfillment(cls, name, patient_id, target_time, target_level):
         rule_str = f"""(ONCE({target_time},*) patient_arrived("{patient_id}", location, start_triage, wound)) #zeitlimit vom nutzer
@@ -536,6 +621,13 @@ AND
 
 class AlivenessChecker(LogRule):
     @classmethod
+    def generate(cls, name, fullfillment=True):
+        if fullfillment:
+            return cls.generate_fullfillment(name)
+        else:
+            return cls.generate_violation(name)
+
+    @classmethod
     def generate_fullfillment(cls, name):
         rule_str = f"""    NOT EXISTS circulation, breathing. changed_state(patient_id, circulation, breathing, "TRUE")
 SINCE[0,*]
@@ -552,6 +644,13 @@ SINCE[0,*]
 
 
 class InteractedChecker(LogRule):
+    @classmethod
+    def generate(cls, name, fullfillment=True):
+        if fullfillment:
+            return cls.generate_fullfillment(name)
+        else:
+            return cls.generate_violation(name)
+
     @classmethod
     def generate_fullfillment(cls, name):
         rule_str = """        (EXISTS level. triage(patient_id, level)) 
@@ -590,6 +689,12 @@ SINCE[0,*)
 
 
 class TriagedChecker(LogRule):
+    def generate(cls, name, fullfillment=True):
+        if fullfillment:
+            return cls.generate_fullfillment(name)
+        else:
+            return cls.generate_violation(name)
+
     @classmethod
     def generate_fullfillment(cls, name):
         rule_str = """    NOT (EXISTS level. triage(patient_id, level))
@@ -624,7 +729,113 @@ SINCE[0,*)
 class BerlinAlgorithm(LogRule):
     @classmethod
     def generate(cls, name):
-        pass
+        formula = f"""
+                    (((triage(patient_id, chosen_triage_category)
+        AND
+            (EXISTS location. ONCE(0, *) patient_arrived(patient_id, location, "grey", wound))
+        AND 
+                    (NOT EXISTS c,d, e. changed_state(patient_id, c,d, e)
+                SINCE(0,*) 
+                    changed_state(patient_id, circulation, breathing, is_dead))) 
+            AND 
+                wound = "heavy")
+            AND 
+                NOT chosen_triage_category = "red")
+    OR 
+            (((triage(patient_id, chosen_triage_category)
+        AND
+            (EXISTS location. ONCE(0, *) patient_arrived(patient_id, location, "grey", wound))
+        AND 
+                (NOT EXISTS c,d, e. changed_state(patient_id, c,d, e)
+            SINCE(0,*) 
+                changed_state(patient_id, circulation, breathing, is_dead))) 
+        AND 
+            chosen_triage_category = "red")
+        AND 
+            NOT wound = "heavy")
+OR
+                ((triage(patient_id, chosen_triage_category)
+            AND
+                (((EXISTS location. ONCE(0, *) patient_arrived(patient_id, location, "grey", wound))
+            AND
+                        (NOT EXISTS c,d, e. changed_state(patient_id, c,d, e)
+                    SINCE(0,*) 
+                        changed_state(patient_id, circulation, breathing, is_dead)) 
+                AND 
+                    circulation <= 10.0
+                AND
+                    NOT wound = "heavy")
+        OR
+                ((EXISTS location. ONCE(0, *) patient_arrived(patient_id, location, "grey", wound))
+            AND 
+                        (NOT EXISTS c,d, e. changed_state(patient_id, c,d, e)
+                    SINCE(0,*) 
+                        changed_state(patient_id, circulation, breathing, is_dead)) 
+                AND 
+                    wound = "medium"
+                AND
+                    NOT wound = "heavy")))
+            AND 
+                NOT chosen_triage_category = "yellow")
+    OR 
+            ((((triage(patient_id, chosen_triage_category)
+        AND
+            (EXISTS location. ONCE(0, *) patient_arrived(patient_id, location, "grey", wound))
+        AND 
+                (NOT EXISTS c,d, e. changed_state(patient_id, c,d, e)
+            SINCE(0,*) 
+                changed_state(patient_id, circulation, breathing, is_dead)))) 
+        AND 
+                chosen_triage_category = "yellow")
+        AND 
+                (NOT wound = "medium")
+            AND
+                (NOT breathing = 10.0))
+OR  
+            (((triage(patient_id, chosen_triage_category)
+        AND
+            (EXISTS location. ONCE(0, *) patient_arrived(patient_id, location, "grey", wound))
+        AND 
+                (NOT EXISTS c,d, e. changed_state(patient_id, c,d, e)
+            SINCE(0,*) 
+                changed_state(patient_id, circulation, breathing, is_dead)))) 
+        AND 
+            (NOT wound = "heavy")
+        AND 
+            (NOT wound = "medium")
+        AND 
+            (NOT circulation <= 10.0)
+        AND
+            (NOT chosen_triage_category = "green"))
+    OR
+        ((triage(patient_id, chosen_triage_category)
+        AND 
+            chosen_triage_category = "green")
+        AND
+            ((((EXISTS location. ONCE(0, *) patient_arrived(patient_id, location, "grey", wound))
+        AND 
+                (NOT EXISTS c,d, e. changed_state(patient_id, c,d, e)
+            SINCE(0,*) 
+                changed_state(patient_id, circulation, breathing, is_dead))) 
+        AND 
+            wound = "heavy")
+        OR
+            (((EXISTS location. ONCE(0, *) patient_arrived(patient_id, location, "grey", wound))
+        AND 
+                (NOT EXISTS c,d, e. changed_state(patient_id, c,d, e)
+            SINCE(0,*) 
+                changed_state(patient_id, circulation, breathing, is_dead)))
+        AND 
+            wound = "medium")
+        OR 
+            (((EXISTS location. ONCE(0, *) patient_arrived(patient_id, location, "grey", wound))
+        AND 
+                (NOT EXISTS c,d, e. changed_state(patient_id, c,d, e)
+            SINCE(0,*) 
+                changed_state(patient_id, circulation, breathing, is_dead)))
+        AND 
+            circulation <= 10.0)))
+            """
 
 
 if __name__ == "__main__":

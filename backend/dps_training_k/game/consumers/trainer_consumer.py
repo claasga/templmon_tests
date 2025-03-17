@@ -226,19 +226,18 @@ class TrainerConsumer(AbstractConsumer):
         self.subscribe(ChannelNotifier.get_group_name(self.exercise))
         self.subscribe(LogEntryDispatcher.get_group_name(self.exercise))
         self.subscribe(ViolationDispatcher.get_group_name(self.exercise.frontend_id))
-        # content = {
-        #    "action": "i.V. Zugang",
-        #    "timeframe": 2,
-        #    "vital_parameters": {
-        #        "circulation": "Herzfreq: 83 /min|peripher kräftig tastbar|RR: 143/083"
-        #    },
-        #    "examination_results": {
-        #        "Ultraschall_Abdomen": "Ultraschall:_Abdomen__Normalbefund__keine_pathologischen_Veraenderungen__Thorax:_keine_Erguesse_sichtbar"
-        #    },
-        # }
-        # self.handle_add_rule(
-        #    self.exercise, "symptom-combination", "ultraschall_rule", content
-        # )
+        content = {
+            "action": "i.V. Zugang",
+            "timeframe": 2,
+            "vital_parameters": {"circulation": ("<=", 83)},
+            "examination_results": {
+                "Ultraschall_Abdomen": "Ultraschall:_Abdomen__Normalbefund__keine_pathologischen_Veraenderungen__Thorax:_keine_Erguesse_sichtbar"
+            },
+            "fullfillment": False,
+        }
+        self.handle_add_rule(
+            self.exercise, "symptom-combination", "ultraschall_rule", content
+        )
         content = {"operator": ">=", "personnel_count": 2}
         self.handle_add_rule(self.exercise, "personnel_check", "beq_two_rule", content)
 
@@ -506,6 +505,7 @@ class TrainerConsumer(AbstractConsumer):
 
     def violation_processing_finished_event(self, event):
         if self.closed:
+            print("Violation processing skipped, as the connection is already closed.")
             return
         current_time = time.perf_counter()
         logtype = event["input_type"]
@@ -535,10 +535,12 @@ class TrainerConsumer(AbstractConsumer):
             current_time - monpoly_measuring_start,
         )
         print(f"TC: current measurments: {self.patient_instances_latencies}")
-        if self.received_rules_count == self.rules_count:
-            self.received_rules_count = 0
-            patient_consumer.measuring_instance.finish_measurement()
         print(
             f"TC: measured time: {self.patient_instances_latencies[currently_tested_patient][-1]}"
         )
-        self.send_event(self.TrainerOutgoingMessageTypes.TRAINER_MEASUREMENT_FINISHED)
+        if self.received_rules_count == self.rules_count:
+            self.received_rules_count = 0
+            patient_consumer.measuring_instance.finish_measurement()
+            self.send_event(
+                self.TrainerOutgoingMessageTypes.TRAINER_MEASUREMENT_FINISHED
+            )
