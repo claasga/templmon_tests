@@ -133,7 +133,6 @@ class TrainerConsumer(AbstractConsumer):
             ),
             self.TrainerIncomingMessageTypes.LOG_RULE_ADD: (
                 self.handle_add_rule,
-                "logRuleName",
                 "type",
                 "name",
                 "configuration",
@@ -159,7 +158,7 @@ class TrainerConsumer(AbstractConsumer):
             self.MEASUREMENTS_DIRECTORY,
             f"measurements_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}",
         )
-        os.makedirs(self.directory_path, mode=0o666, exist_ok=True)
+        os.makedirs(self.directory_path, mode=0o755, exist_ok=True)
 
     def save_measurements(self):
         print(f"TC: saving measurements: {self.patient_instances_latencies}")
@@ -181,12 +180,17 @@ class TrainerConsumer(AbstractConsumer):
     def handle_add_rule(self, exercise, type, name, configuration):
         try:
             rules = None
-            if type == "symptom-combination":
+            if type == "symptom_combination":
                 rules = SymptomCombinationRule.generate(name, **configuration)
             elif type == "personnel_check":
                 rules = [PersonnelCheckRule.generate(name, **configuration)]
             elif type == "personnel_prioritization":
                 rules = [PersonnelPrioritizationRule.generate(name, **configuration)]
+            elif type == "triage_goal":
+                rules = [TriageGoalRule.generate(name, **configuration)]
+            else:
+                self.send_failure(f"Unknown rule type '{type}'")
+                return
             for rule in rules:
                 RuleRunner(exercise.frontend_id, LogEntryDispatcher, rule)
                 self.rules_count += 1
@@ -226,37 +230,9 @@ class TrainerConsumer(AbstractConsumer):
         self.subscribe(ChannelNotifier.get_group_name(self.exercise))
         self.subscribe(LogEntryDispatcher.get_group_name(self.exercise))
         self.subscribe(ViolationDispatcher.get_group_name(self.exercise.frontend_id))
-        content = {
-            "action": "i.V. Zugang",
-            "timeframe": 2,
-            "vital_parameters": {"circulation": ("<=", 83)},
-            "examination_results": {
-                "Ultraschall_Abdomen": "Ultraschall:_Abdomen__Normalbefund__keine_pathologischen_Veraenderungen__Thorax:_keine_Erguesse_sichtbar"
-            },
-            "fullfillment": False,
-        }
-        self.handle_add_rule(
-            self.exercise, "symptom-combination", "ultraschall_rule", content
-        )
-        content = {"operator": ">=", "personnel_count": 2}
-        self.handle_add_rule(self.exercise, "personnel_check", "beq_two_rule", content)
 
         # content = {"operator": "<", "personnel_count": 2}
-        # self.handle_add_rule(self.exercise, "personnel_check", "less_two_rule", content)
-
-        # content = {
-        #    "vital_sign_p1": "circulation",
-        #    "operator_p1": "",
-        #    "value_p1": "Herzfreq: 83 /min|peripher kräftig tastbar|RR: 143/083",
-        #    "personnel_count_p1": 1,
-        #    "vital_sign_p2": "circulation",
-        #    "operator_p2": "",
-        #    "value_p2": "Herzfreq: 72 /min|peripher tastbar|RR: 125/063",
-        #    "personnel_count_p2": 1,
-        # }
-        # self.handle_add_rule(
-        #    self.exercise, "personnel_prioritization", "1005_is_worse", content
-        # )
+        # self.handle_add_rule(self.exercise, "personnel_check", "less_two_rule", content
 
     def handle_end_exercise(self, exercise):
         exercise.update_state(Exercise.StateTypes.FINISHED)
@@ -511,6 +487,7 @@ class TrainerConsumer(AbstractConsumer):
         logtype = event["input_type"]
         rule_id = f'{event["template_name"]}_{event["rule_name"]}'
         monpoly_measuring_start = float(event["monpoly_measuring_start"])
+        monpoly_measuring_end = float(event["monpoly_measuring_end"])
         print(
             f"TC: measured_logtype == {patient_consumer.measuring_instance.measured_logtype if patient_consumer.measuring_instance else None}"
         )
@@ -533,8 +510,9 @@ class TrainerConsumer(AbstractConsumer):
             current_time,
             current_time - measurement_start,
             current_time - monpoly_measuring_start,
+            monpoly_measuring_end - monpoly_measuring_start,
         )
-        print(f"TC: current measurments: {self.patient_instances_latencies}")
+        # print(f"TC: current measurments: {self.patient_instances_latencies}")
         print(
             f"TC: measured time: {self.patient_instances_latencies[currently_tested_patient][-1]}"
         )

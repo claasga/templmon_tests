@@ -184,13 +184,13 @@ AND
         SINCE[0,*]
             {changed_state_1.mfotl()})
     AND
-        {selected_parameter_1} = {sm.LogType._monpolify_string(value_p1)}
+        {changed_state_1.compare_values_mfotl({vital_sign_p1: (operator_p1, value_p1)})})
 AND
             ((NOT EXISTS {c_changed_state_2.bind([RP.PATIENT.name], False)}. {c_changed_state_2.mfotl()})
         SINCE[0,*]
             {changed_state_2.mfotl()})
     AND
-        {selected_parameter_2} = {sm.LogType._monpolify_string(value_p2)}
+        {changed_state_2.compare_values_mfotl({vital_sign_p2: (operator_p2, value_p2)})})
     AND
         {changed_state_2.get_variable(RP.DEAD.name)} = "FALSE"
 AND

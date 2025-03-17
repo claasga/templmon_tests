@@ -1,5 +1,6 @@
 import re
 import asyncio
+import time
 
 if __name__ != "__main__":
     from .log_transformer import MonpolyLogEntry
@@ -28,6 +29,7 @@ class SingularViolationTracker(ViolationTracker):
         violations: list[dict],
         input_type,
         measurement_begin,
+        processing_finish_time,
     ):
         for violation in violations:
             await self._violation_listener.dispatch_singular_violation(
@@ -45,6 +47,7 @@ class SingularViolationTracker(ViolationTracker):
             self._template_name,
             input_type,
             measurement_begin,
+            processing_finish_time,
         )
 
 
@@ -117,6 +120,7 @@ class DurationalViolationTracker(ViolationTracker):
         violations: list[dict],
         input_type,
         measurement_begin,
+        processing_finish_time,
     ):
         """Assumes that violations are unique. For MonPoly they are"""
         unfinished_keys = list(self.current_unfinished_violations.keys())
@@ -131,6 +135,7 @@ class DurationalViolationTracker(ViolationTracker):
                 self._template_name,
                 input_type,
                 measurement_begin,
+                processing_finish_time,
             )
             return
 
@@ -185,6 +190,7 @@ class DurationalViolationTracker(ViolationTracker):
             self._template_name,
             input_type,
             measurement_begin,
+            processing_finish_time,
         )
 
 
@@ -260,7 +266,7 @@ class OutputParser:
                 if decoded_line[:2] != "At":
                     print(f"OP: WARNING: {decoded_line[:-1]}")
                 continue
-
+            processing_finish_time = time.perf_counter()
             self.pending_inputs_owner.output_read.set()
             print(f"OP: got {decoded_line[:-1]}")
             corresponding_input, measurement_begin = (
@@ -291,6 +297,7 @@ class OutputParser:
                 fullfilling_assignments,
                 corresponding_input,
                 measurement_begin,
+                processing_finish_time,
             )
 
 

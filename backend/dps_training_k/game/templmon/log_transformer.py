@@ -100,7 +100,7 @@ class LogTransformer:
             log_str += PatientArrived.log(patient_id, area_id, triage_display, injuries)
         elif log_type == MonpolyLogEntry.CHANGED_STATE:
             patient_id = log_entry.patient_instance.pk
-            breathing = log_entry.content.get("state", {}).get("Airway", "")
+            breathing = log_entry.content.get("state", {}).get("Breathing", "")
             print(f"LT: Breathing is {breathing}")
             breathing = (
                 int(
@@ -112,7 +112,7 @@ class LogTransformer:
                 else "0"
             )
             circulation = log_entry.content.get("state", {}).get("Circulation", "")
-            print(f"LT: Cirrculation is {circulation}")
+            print(f"LT: Circulation is {circulation}")
 
             circulation = (
                 int(

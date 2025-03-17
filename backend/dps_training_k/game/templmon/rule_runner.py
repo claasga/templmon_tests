@@ -117,14 +117,17 @@ class RuleRunner:
                 f"RR: Sending: {self.log_transformer.generate_commit(monpolified_log_entry)}"
             )
             await self._send_and_process(
-                self.log_transformer.generate_commit(monpolified_log_entry)
+                commit_entry := self.log_transformer.generate_commit(
+                    monpolified_log_entry
+                )
             )
             await self.output_read.wait()
-            # print("*************************************")
-
-            # print(
-            #    f"IN: ({self.log_rule.template_name}, {self.log_rule.rule_name}): {monpolified_log_entry} of type {log_type}"
+            # logfile_name = (
+            #     f"{self.log_rule.template_name}_{self.log_rule.rule_name}.log"
             # )
+            # with open(logfile_name, "a") as logfile:
+            #    logfile.write(f"{monpolified_log_entry}\n")
+            #    logfile.write(f"{commit_entry}\n")
         else:
             raise Exception("Monpoly is not running")
 
