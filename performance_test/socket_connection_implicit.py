@@ -21,7 +21,7 @@ TRAINER_WS_URI = "ws://localhost:8000/ws/trainer"
 PATIENT_WS_URI = "ws://localhost:8000/ws/patient"
 
 BZ_MESSGERAET_ID = UUID("bec79e8b-14b2-48a1-9ea8-c678e48f352e")
-REACTION_TIME = 10
+REACTION_TIME = 12
 
 
 class PatientGroup:
@@ -278,7 +278,7 @@ class PatientGroup:
         return False, True, 0
 
     async def pass_time(self):
-        time_to_pass = REACTION_TIME
+        time_to_pass = 1.5
         timedelta = (datetime.datetime.now() - self.examination_start).total_seconds()
         if timedelta < time_to_pass:
             await asyncio.sleep(time_to_pass - timedelta)
@@ -709,6 +709,6 @@ if __name__ == "__main__":
     patient_count = args.patient_count
     test_cases = [test_case.strip() for test_case in args.test_cases.split(",")]
     if test_cases:
-        asyncio.run(template_test(patient_count, 2, test_cases))
+        asyncio.run(template_test(patient_count, 10, test_cases))
     else:
-        asyncio.run(template_test(patient_count, 2))
+        asyncio.run(template_test(patient_count, 10))
