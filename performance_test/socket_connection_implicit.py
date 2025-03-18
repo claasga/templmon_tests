@@ -91,7 +91,7 @@ class PatientGroup:
                 "Simulations cannot be started without registered patient groups!"
             )
 
-        cls.simulation_end = datetime.datetime.now() + datetime.timedelta(seconds=20.0)
+        cls.simulation_end = datetime.datetime.now() + datetime.timedelta(seconds=130.0)
         i = 0
         try:
             while datetime.datetime.now() < cls.simulation_end:
@@ -403,28 +403,28 @@ async def setup_exercise(
     exercise_json = await trainer_ws.recv()
     exercise = json.loads(exercise_json)
     print(exercise)
-    await trainer_ws.send(json.dumps({"messageType": "area-add"}))
-    exercise_json = await trainer_ws.recv()
-    exercise = json.loads(exercise_json)
-    print(exercise)
-    idle_areID = int(exercise.get("exercise").get("areas")[-1].get("areaId"))
-    await trainer_ws.send(
-        json.dumps(
-            {"messageType": "area-rename", "areaId": idle_areID, "areaName": "X"}
-        )
-    )
-    exercise_json = await trainer_ws.recv()
-    await trainer_ws.send(
-        json.dumps(
-            {
-                "messageType": "patient-add",
-                "areaId": idle_areID,
-                "patientName": f"Idle Patient {idle_areID}",
-                "code": 1005,
-            }
-        )
-    )
-    exercise_json = await trainer_ws.recv()
+    # await trainer_ws.send(json.dumps({"messageType": "area-add"}))
+    # exercise_json = await trainer_ws.recv()
+    # exercise = json.loads(exercise_json)
+    # print(exercise)
+    # idle_areID = int(exercise.get("exercise").get("areas")[-1].get("areaId"))
+    # await trainer_ws.send(
+    #    json.dumps(
+    #        {"messageType": "area-rename", "areaId": idle_areID, "areaName": "X"}
+    #    )
+    # )
+    # exercise_json = await trainer_ws.recv()
+    # await trainer_ws.send(
+    #    json.dumps(
+    #        {
+    #            "messageType": "patient-add",
+    #            "areaId": idle_areID,
+    #            "patientName": f"Idle Patient {idle_areID}",
+    #            "code": 1006,
+    #        }
+    #    )
+    # )
+    # exercise_json = await trainer_ws.recv()
     patient_ids = []
     exercise_json = None
     for i in range(0, int(patient_count / 2)):
@@ -452,7 +452,7 @@ async def setup_exercise(
                     "messageType": "patient-add",
                     "areaId": areaID,
                     "patientName": f"Bad Patient {areaID}.{i % interval}",
-                    "code": 1005,
+                    "code": 1006,
                 }
             )
         )
@@ -539,8 +539,8 @@ async def configure_templates(
                 "configuration": {
                     "action": "Turniquet",
                     "timeframe": REACTION_TIME,
-                    "vital_parameters": {"circulation": ("<=", 83)},
-                    "examination_results": {"Blutzucker analysieren": "BZ:_125"},
+                    "vital_parameters": {"circulation": ("<=", 52)},
+                    "examination_results": {"Blutzucker analysieren": "BZ:_235"},
                     "fullfillment": False,
                 },
             },
@@ -550,8 +550,8 @@ async def configure_templates(
                 "configuration": {
                     "action": "Turniquet",
                     "timeframe": REACTION_TIME,
-                    "vital_parameters": {"circulation": ("<=", 83)},
-                    "examination_results": {"Blutzucker analysieren": "BZ:_125"},
+                    "vital_parameters": {"circulation": ("<=", 52)},
+                    "examination_results": {"Blutzucker analysieren": "BZ:_235"},
                     "fullfillment": True,
                 },
             },
@@ -559,15 +559,15 @@ async def configure_templates(
         TestCases.PERSONNEL_PRIORITIZATION: [
             {
                 "type": "personnel_prioritization",
-                "name": "1002_is_worse",
+                "name": "1006_is_worse",
                 "configuration": {
                     "vital_sign_p1": "circulation",
-                    "operator_p1": "<=",
-                    "value_p1": 83,
+                    "operator_p1": ">",
+                    "value_p1": 52,
                     "personnel_count_p1": 1,
                     "vital_sign_p2": "circulation",
                     "operator_p2": ">=",
-                    "value_p2": 94,
+                    "value_p2": 52,
                     "personnel_count_p2": 2,
                 },
             }
@@ -575,7 +575,7 @@ async def configure_templates(
         TestCases.TRIAGE_GOAL: [
             {
                 "type": "triage_goal",
-                "name": "yellow_1002",
+                "name": "yellow_1006",
                 "configuration": {
                     "patient_id": 3,
                     "target_time": REACTION_TIME - 1,
@@ -585,7 +585,7 @@ async def configure_templates(
             },
             {
                 "type": "triage_goal",
-                "name": "yellow_1002",
+                "name": "yellow_1006",
                 "configuration": {
                     "patient_id": 3,
                     "target_time": REACTION_TIME - 1,
@@ -674,7 +674,7 @@ async def template_test(patient_count, area_size, templates_to_use=None):
         i_1 = i * 2
         i_2 = (i * 2) + 1
         args = [
-            ["1001", "1005"] * (patient_count // 2),
+            ["1001", "1006"] * (patient_count // 2),
             [patients_ws[i_1], patients_ws[i_2]],
             [personnel_ids[i_1], personnel_ids[i_2]],
             material_ids[i],
@@ -700,7 +700,6 @@ if __name__ == "__main__":
     parser.add_argument(
         "--test_cases",
         type=str,
-        default="",
         help="Comma-separated list of test cases (optional).",
     )
     args = parser.parse_args()
@@ -708,6 +707,7 @@ if __name__ == "__main__":
     # Extract arguments
     patient_count = args.patient_count
     test_cases = [test_case.strip() for test_case in args.test_cases.split(",")]
+    print(f"Test cases are: {test_cases}")
     if test_cases:
         asyncio.run(template_test(patient_count, 10, test_cases))
     else:

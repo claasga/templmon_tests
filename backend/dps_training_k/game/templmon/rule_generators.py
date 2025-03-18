@@ -763,7 +763,7 @@ OR
                     SINCE(0,*) 
                         changed_state(patient_id, circulation, breathing, is_dead)) 
                 AND 
-                    circulation <=94
+                    circulation  >= 83
                 AND
                     NOT wound = "heavy")
         OR
@@ -805,7 +805,7 @@ OR
         AND 
             (NOT wound = "medium")
         AND 
-            (NOT circulation <=94)
+            (NOT circulation  >= 83)
         AND
             (NOT chosen_triage_category = "green"))
     OR
@@ -835,7 +835,7 @@ OR
             SINCE(0,*) 
                 changed_state(patient_id, circulation, breathing, is_dead)))
         AND 
-            circulation <=94)))
+            circulation  >= 83)))
             """
         return [cls.create(formula, "berlin_algorithm", SingularViolationType(), name)]
 
