@@ -368,10 +368,10 @@ class Observable:
             return
 
         if PROCESS_ID == 1:
-            publish_to_process(
-                PARTNER_PROCESS_ID,
-                {"obj_id": obj.id, "exercise_frontend_id": exercise_frontend_id},
-            )
+            # publish_to_process(
+            #    PARTNER_PROCESS_ID,
+            #    {"obj_id": obj.id, "exercise_frontend_id": exercise_frontend_id},
+            # )
             return
         if exercise_frontend_id in cls._exercise_subscribers:
             for subscriber in cls._exercise_subscribers[exercise_frontend_id]:
