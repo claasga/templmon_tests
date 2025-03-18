@@ -184,13 +184,13 @@ AND
         SINCE[0,*]
             {changed_state_1.mfotl()})
     AND
-        {changed_state_1.compare_values_mfotl({vital_sign_p1: (operator_p1, value_p1)})})
+        {changed_state_1.compare_values_mfotl({vital_sign_p1: (operator_p1, value_p1)})}
 AND
             ((NOT EXISTS {c_changed_state_2.bind([RP.PATIENT.name], False)}. {c_changed_state_2.mfotl()})
         SINCE[0,*]
             {changed_state_2.mfotl()})
     AND
-        {changed_state_2.compare_values_mfotl({vital_sign_p2: (operator_p2, value_p2)})})
+        {changed_state_2.compare_values_mfotl({vital_sign_p2: (operator_p2, value_p2)})}
     AND
         {changed_state_2.get_variable(RP.DEAD.name)} = "FALSE"
 AND
@@ -689,6 +689,7 @@ SINCE[0,*)
 
 
 class TriagedChecker(LogRule):
+    @classmethod
     def generate(cls, name, fullfillment=True):
         if fullfillment:
             return cls.generate_fullfillment(name)
@@ -732,7 +733,7 @@ class BerlinAlgorithm(LogRule):
         formula = f"""
                     (((triage(patient_id, chosen_triage_category)
         AND
-            (EXISTS location. ONCE(0, *) patient_arrived(patient_id, location, "grey", wound))
+            (EXISTS location. ONCE(0, *) patient_arrived(patient_id, location, "Gray", wound))
         AND 
                     (NOT EXISTS c,d, e. changed_state(patient_id, c,d, e)
                 SINCE(0,*) 
@@ -744,7 +745,7 @@ class BerlinAlgorithm(LogRule):
     OR 
             (((triage(patient_id, chosen_triage_category)
         AND
-            (EXISTS location. ONCE(0, *) patient_arrived(patient_id, location, "grey", wound))
+            (EXISTS location. ONCE(0, *) patient_arrived(patient_id, location, "Gray", wound))
         AND 
                 (NOT EXISTS c,d, e. changed_state(patient_id, c,d, e)
             SINCE(0,*) 
@@ -756,17 +757,17 @@ class BerlinAlgorithm(LogRule):
 OR
                 ((triage(patient_id, chosen_triage_category)
             AND
-                (((EXISTS location. ONCE(0, *) patient_arrived(patient_id, location, "grey", wound))
+                (((EXISTS location. ONCE(0, *) patient_arrived(patient_id, location, "Gray", wound))
             AND
                         (NOT EXISTS c,d, e. changed_state(patient_id, c,d, e)
                     SINCE(0,*) 
                         changed_state(patient_id, circulation, breathing, is_dead)) 
                 AND 
-                    circulation <= 10.0
+                    circulation <=94
                 AND
                     NOT wound = "heavy")
         OR
-                ((EXISTS location. ONCE(0, *) patient_arrived(patient_id, location, "grey", wound))
+                ((EXISTS location. ONCE(0, *) patient_arrived(patient_id, location, "Gray", wound))
             AND 
                         (NOT EXISTS c,d, e. changed_state(patient_id, c,d, e)
                     SINCE(0,*) 
@@ -780,7 +781,7 @@ OR
     OR 
             ((((triage(patient_id, chosen_triage_category)
         AND
-            (EXISTS location. ONCE(0, *) patient_arrived(patient_id, location, "grey", wound))
+            (EXISTS location. ONCE(0, *) patient_arrived(patient_id, location, "Gray", wound))
         AND 
                 (NOT EXISTS c,d, e. changed_state(patient_id, c,d, e)
             SINCE(0,*) 
@@ -790,11 +791,11 @@ OR
         AND 
                 (NOT wound = "medium")
             AND
-                (NOT breathing = 10.0))
+                (NOT circulation <= 94))
 OR  
             (((triage(patient_id, chosen_triage_category)
         AND
-            (EXISTS location. ONCE(0, *) patient_arrived(patient_id, location, "grey", wound))
+            (EXISTS location. ONCE(0, *) patient_arrived(patient_id, location, "Gray", wound))
         AND 
                 (NOT EXISTS c,d, e. changed_state(patient_id, c,d, e)
             SINCE(0,*) 
@@ -804,7 +805,7 @@ OR
         AND 
             (NOT wound = "medium")
         AND 
-            (NOT circulation <= 10.0)
+            (NOT circulation <=94)
         AND
             (NOT chosen_triage_category = "green"))
     OR
@@ -812,7 +813,7 @@ OR
         AND 
             chosen_triage_category = "green")
         AND
-            ((((EXISTS location. ONCE(0, *) patient_arrived(patient_id, location, "grey", wound))
+            ((((EXISTS location. ONCE(0, *) patient_arrived(patient_id, location, "Gray", wound))
         AND 
                 (NOT EXISTS c,d, e. changed_state(patient_id, c,d, e)
             SINCE(0,*) 
@@ -820,7 +821,7 @@ OR
         AND 
             wound = "heavy")
         OR
-            (((EXISTS location. ONCE(0, *) patient_arrived(patient_id, location, "grey", wound))
+            (((EXISTS location. ONCE(0, *) patient_arrived(patient_id, location, "Gray", wound))
         AND 
                 (NOT EXISTS c,d, e. changed_state(patient_id, c,d, e)
             SINCE(0,*) 
@@ -828,14 +829,15 @@ OR
         AND 
             wound = "medium")
         OR 
-            (((EXISTS location. ONCE(0, *) patient_arrived(patient_id, location, "grey", wound))
+            (((EXISTS location. ONCE(0, *) patient_arrived(patient_id, location, "Gray", wound))
         AND 
                 (NOT EXISTS c,d, e. changed_state(patient_id, c,d, e)
             SINCE(0,*) 
                 changed_state(patient_id, circulation, breathing, is_dead)))
         AND 
-            circulation <= 10.0)))
+            circulation <=94)))
             """
+        return [cls.create(formula, "berlin_algorithm", SingularViolationType(), name)]
 
 
 if __name__ == "__main__":

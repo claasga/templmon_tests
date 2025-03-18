@@ -178,16 +178,22 @@ class TrainerConsumer(AbstractConsumer):
         Area.create_area(name="Bereich", exercise=exercise, isPaused=False)
 
     def handle_add_rule(self, exercise, type, name, configuration):
+        rule_generators = {
+            "symptom_combination": SymptomCombinationRule.generate,
+            "personnel_check": PersonnelCheckRule.generate,
+            "personnel_prioritization": PersonnelPrioritizationRule.generate,
+            "triage_goal": TriageGoalRule.generate,
+            "aliveness_check": AlivenessChecker.generate,
+            "interacted_check": InteractedChecker.generate,
+            "triaged_check": TriagedChecker.generate,
+            "berlin_algorithm": BerlinAlgorithm.generate,
+        }
+
         try:
-            rules = None
-            if type == "symptom_combination":
-                rules = SymptomCombinationRule.generate(name, **configuration)
-            elif type == "personnel_check":
-                rules = [PersonnelCheckRule.generate(name, **configuration)]
-            elif type == "personnel_prioritization":
-                rules = [PersonnelPrioritizationRule.generate(name, **configuration)]
-            elif type == "triage_goal":
-                rules = [TriageGoalRule.generate(name, **configuration)]
+            if type in rule_generators:
+                rules = rule_generators[type](name, **configuration)
+                if not isinstance(rules, list):
+                    rules = [rules]
             else:
                 self.send_failure(f"Unknown rule type '{type}'")
                 return

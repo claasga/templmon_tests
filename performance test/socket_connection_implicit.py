@@ -4,6 +4,8 @@ import requests
 import websockets
 import datetime
 from uuid import UUID
+import sys
+import argparse
 
 # testplans (get next step(inkl. switch_to_competing_patient), reset_to_state_change)
 # patient_group(competing patients(patient websockets), trainer websocket, ressource_ids(geräte, personal), testplans, state_change_occured, make_next step, irgendeine art von yielding)
@@ -19,7 +21,7 @@ TRAINER_WS_URI = "ws://localhost:8000/ws/trainer"
 PATIENT_WS_URI = "ws://localhost:8000/ws/patient"
 
 BZ_MESSGERAET_ID = UUID("bec79e8b-14b2-48a1-9ea8-c678e48f352e")
-REACTION_TIME = 60
+REACTION_TIME = 10
 
 
 class PatientGroup:
@@ -89,7 +91,7 @@ class PatientGroup:
                 "Simulations cannot be started without registered patient groups!"
             )
 
-        cls.simulation_end = datetime.datetime.now() + datetime.timedelta(seconds=13.0)
+        cls.simulation_end = datetime.datetime.now() + datetime.timedelta(seconds=20.0)
         i = 0
         try:
             while datetime.datetime.now() < cls.simulation_end:
@@ -509,6 +511,9 @@ class TestCases:
     PERSONNEL_CHECK = "pc"
     SYMPTOM_COMBINATION = "sc"
     PERSONNEL_PRIORITIZATION = "pp"
+    TRIAGE_GOAL = "tg"
+    FILTER = "ft"
+    BERLIN = "bl"
 
 
 async def configure_templates(
@@ -567,11 +572,69 @@ async def configure_templates(
                 },
             }
         ],
+        TestCases.TRIAGE_GOAL: [
+            {
+                "type": "triage_goal",
+                "name": "yellow_1002",
+                "configuration": {
+                    "patient_id": 3,
+                    "target_time": REACTION_TIME - 1,
+                    "target_level": "Yellow",
+                    "fullfillment": True,
+                },
+            },
+            {
+                "type": "triage_goal",
+                "name": "yellow_1002",
+                "configuration": {
+                    "patient_id": 3,
+                    "target_time": REACTION_TIME - 1,
+                    "target_level": "Yellow",
+                    "fullfillment": True,
+                },
+            },
+        ],
+        TestCases.FILTER: [
+            {
+                "type": "aliveness_check",
+                "name": "who_is_there",
+                "configuration": {"fullfillment": True},
+            },
+            {
+                "type": "aliveness_check",
+                "name": "rise_from_the_ashes",
+                "configuration": {"fullfillment": False},
+            },
+            {
+                "type": "interacted_check",
+                "name": "mamas_favourite_boy",
+                "configuration": {"fullfillment": True},
+            },
+            {
+                "type": "interacted_check",
+                "name": "lonely",
+                "configuration": {"fullfillment": False},
+            },
+            {
+                "type": "triaged_check",
+                "name": "triaged",
+                "configuration": {"fullfillment": True},
+            },
+            {
+                "type": "triaged_check",
+                "name": "untriaged",
+                "configuration": {"fullfillment": False},
+            },
+        ],
+        TestCases.BERLIN: [
+            {"type": "berlin_algorithm", "name": "wrong", "configuration": {}}
+        ],
     }
     for template in templates_to_use:
-        await trainer_ws.send(
-            json.dumps({"messageType": "log-rule-add", **templates[template]})
-        )
+        for sub_template in templates[template]:
+            await trainer_ws.send(
+                json.dumps({"messageType": "log-rule-add", **sub_template})
+            )
 
 
 async def start_exercise(
@@ -631,6 +694,21 @@ async def template_test(patient_count, area_size, templates_to_use=None):
 
 if __name__ == "__main__":
     # asyncio.run(template_test([(2, 2), (10, 2), (30, 2)]))
-    asyncio.run(
-        template_test(2, 2, [TestCases.PERSONNEL_CHECK, TestCases.SYMPTOM_COMBINATION])
+    # Parse arguments from the command line
+    parser = argparse.ArgumentParser(description="Run the template test script.")
+    parser.add_argument("patient_count", type=int, help="Number of patients.")
+    parser.add_argument(
+        "--test_cases",
+        type=str,
+        default="",
+        help="Comma-separated list of test cases (optional).",
     )
+    args = parser.parse_args()
+
+    # Extract arguments
+    patient_count = args.patient_count
+    test_cases = [test_case.strip() for test_case in args.test_cases.split(",")]
+    if test_cases:
+        asyncio.run(template_test(patient_count, 2, test_cases))
+    else:
+        asyncio.run(template_test(patient_count, 2))
