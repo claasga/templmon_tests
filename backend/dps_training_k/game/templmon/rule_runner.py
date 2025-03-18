@@ -77,6 +77,7 @@ class RuleRunner:
             future.result()
         except Exception as e:
             print(f"Error in _write_log_entry: {e}")
+            raise e
 
     async def _send_and_process(self, input: str):
         input = f"{input}\n"

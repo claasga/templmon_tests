@@ -241,6 +241,12 @@ class TrainerConsumer(AbstractConsumer):
         # self.handle_add_rule(self.exercise, "personnel_check", "less_two_rule", content
 
     def handle_end_exercise(self, exercise):
+        print(
+            """TC: ********************
+        attention******************
+        the  end exercise method is called
+        """
+        )
         exercise.update_state(Exercise.StateTypes.FINISHED)
 
     def handle_start_exercise(self, exercise):

@@ -326,8 +326,8 @@ class PatientConsumer(AbstractConsumer):
     def _stop_measurement(self):
         if not self.measurement_start:
             return None
-        end_time = time.perf_counter() - self.measurement_start
-        self.measured_times.append(end_time)
+        end_time = time.perf_counter()
+        self.measured_times.append((end_time, end_time - self.measurement_start))
         print(f"PC: measured time: {self.measured_times[-1]}")
         return end_time
 

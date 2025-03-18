@@ -91,7 +91,7 @@ class PatientGroup:
                 "Simulations cannot be started without registered patient groups!"
             )
 
-        cls.simulation_end = datetime.datetime.now() + datetime.timedelta(seconds=130.0)
+        cls.simulation_end = datetime.datetime.now() + datetime.timedelta(seconds=600.0)
         i = 0
         try:
             while datetime.datetime.now() < cls.simulation_end:
@@ -180,9 +180,10 @@ class PatientGroup:
         return state_change, json.loads(message).get("actionId")
 
     async def skip_until_measurement_finished(self):
-        return await self.skip_until_message(
+        result = await self.skip_until_message(
             self.get_current_patient_ws(), "patient-measurement-finished"
-        )[0]
+        )
+        return result[0]
 
     async def initial_triage(self):
         state_change = False
@@ -278,7 +279,7 @@ class PatientGroup:
         return False, True, 0
 
     async def pass_time(self):
-        time_to_pass = 1.5
+        time_to_pass = 15
         timedelta = (datetime.datetime.now() - self.examination_start).total_seconds()
         if timedelta < time_to_pass:
             await asyncio.sleep(time_to_pass - timedelta)
@@ -403,28 +404,6 @@ async def setup_exercise(
     exercise_json = await trainer_ws.recv()
     exercise = json.loads(exercise_json)
     print(exercise)
-    # await trainer_ws.send(json.dumps({"messageType": "area-add"}))
-    # exercise_json = await trainer_ws.recv()
-    # exercise = json.loads(exercise_json)
-    # print(exercise)
-    # idle_areID = int(exercise.get("exercise").get("areas")[-1].get("areaId"))
-    # await trainer_ws.send(
-    #    json.dumps(
-    #        {"messageType": "area-rename", "areaId": idle_areID, "areaName": "X"}
-    #    )
-    # )
-    # exercise_json = await trainer_ws.recv()
-    # await trainer_ws.send(
-    #    json.dumps(
-    #        {
-    #            "messageType": "patient-add",
-    #            "areaId": idle_areID,
-    #            "patientName": f"Idle Patient {idle_areID}",
-    #            "code": 1006,
-    #        }
-    #    )
-    # )
-    # exercise_json = await trainer_ws.recv()
     patient_ids = []
     exercise_json = None
     for i in range(0, int(patient_count / 2)):
@@ -706,7 +685,9 @@ if __name__ == "__main__":
 
     # Extract arguments
     patient_count = args.patient_count
-    test_cases = [test_case.strip() for test_case in args.test_cases.split(",")]
+    test_cases = []
+    if args.test_cases:
+        test_cases = [test_case.strip() for test_case in args.test_cases.split(",")]
     print(f"Test cases are: {test_cases}")
     if test_cases:
         asyncio.run(template_test(patient_count, 10, test_cases))
