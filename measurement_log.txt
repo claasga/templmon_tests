@@ -1,0 +1,30 @@
+time.struct_time(tm_year=2025, tm_mon=3, tm_mday=19, tm_hour=10, tm_min=21, tm_sec=4, tm_wday=2, tm_yday=78, tm_isdst=0): Running test with 2 logs and templates .
+”time.struct_time(tm_year=2025, tm_mon=3, tm_mday=19, tm_hour=10, tm_min=31, tm_sec=43, tm_wday=2, tm_yday=78, tm_isdst=0):Test failed for test_size=2 and template_configuration='.
+time.struct_time(tm_year=2025, tm_mon=3, tm_mday=19, tm_hour=10, tm_min=34, tm_sec=43, tm_wday=2, tm_yday=78, tm_isdst=0): Running test with 2 logs and templates pc,sc,pp,tg,ft,bl.
+”time.struct_time(tm_year=2025, tm_mon=3, tm_mday=19, tm_hour=10, tm_min=34, tm_sec=43, tm_wday=2, tm_yday=78, tm_isdst=0):Test failed for test_size=2 and template_configuration='pc,sc,pp,tg,ft,bl.
+time.struct_time(tm_year=2025, tm_mon=3, tm_mday=19, tm_hour=10, tm_min=37, tm_sec=29, tm_wday=2, tm_yday=78, tm_isdst=0): Running test with 10 logs and templates .
+”time.struct_time(tm_year=2025, tm_mon=3, tm_mday=19, tm_hour=10, tm_min=48, tm_sec=3, tm_wday=2, tm_yday=78, tm_isdst=0):Test failed for test_size=10 and template_configuration='.
+time.struct_time(tm_year=2025, tm_mon=3, tm_mday=19, tm_hour=10, tm_min=55, tm_sec=58, tm_wday=2, tm_yday=78, tm_isdst=0): Running test with 20 logs and templates .
+”time.struct_time(tm_year=2025, tm_mon=3, tm_mday=19, tm_hour=10, tm_min=55, tm_sec=58, tm_wday=2, tm_yday=78, tm_isdst=0):Test failed for test_size=20 and template_configuration='.
+time.struct_time(tm_year=2025, tm_mon=3, tm_mday=19, tm_hour=11, tm_min=0, tm_sec=23, tm_wday=2, tm_yday=78, tm_isdst=0): Running test with 20 logs and templates .
+”time.struct_time(tm_year=2025, tm_mon=3, tm_mday=19, tm_hour=11, tm_min=2, tm_sec=3, tm_wday=2, tm_yday=78, tm_isdst=0):Test failed for test_size=20 and template_configuration='.
+time.struct_time(tm_year=2025, tm_mon=3, tm_mday=19, tm_hour=11, tm_min=4, tm_sec=50, tm_wday=2, tm_yday=78, tm_isdst=0): Running test with 2 logs and templates pc,sc,pp,tg,ft,bl.
+”time.struct_time(tm_year=2025, tm_mon=3, tm_mday=19, tm_hour=11, tm_min=4, tm_sec=50, tm_wday=2, tm_yday=78, tm_isdst=0):Test failed for test_size=2 and template_configuration='pc,sc,pp,tg,ft,bl.
+time.struct_time(tm_year=2025, tm_mon=3, tm_mday=19, tm_hour=11, tm_min=7, tm_sec=22, tm_wday=2, tm_yday=78, tm_isdst=0): Running test with 10 logs and templates pc,sc,pp,tg,ft,bl.
+”time.struct_time(tm_year=2025, tm_mon=3, tm_mday=19, tm_hour=11, tm_min=7, tm_sec=22, tm_wday=2, tm_yday=78, tm_isdst=0):Test failed for test_size=10 and template_configuration='pc,sc,pp,tg,ft,bl.
+time.struct_time(tm_year=2025, tm_mon=3, tm_mday=19, tm_hour=11, tm_min=8, tm_sec=29, tm_wday=2, tm_yday=78, tm_isdst=0): Running test with 20 logs and templates pc,sc,pp,tg,ft,bl.
+”time.struct_time(tm_year=2025, tm_mon=3, tm_mday=19, tm_hour=11, tm_min=8, tm_sec=30, tm_wday=2, tm_yday=78, tm_isdst=0):Test failed for test_size=20 and template_configuration='pc,sc,pp,tg,ft,bl.
+time.struct_time(tm_year=2025, tm_mon=3, tm_mday=19, tm_hour=11, tm_min=11, tm_sec=46, tm_wday=2, tm_yday=78, tm_isdst=0): Running test with 2 logs and templates pc,sc,pp,tg,ft,bl.
+”time.struct_time(tm_year=2025, tm_mon=3, tm_mday=19, tm_hour=11, tm_min=22, tm_sec=22, tm_wday=2, tm_yday=78, tm_isdst=0): Fished test with 2 logs and templates pc,sc,pp,tg,ft,bl.
+”time.struct_time(tm_year=2025, tm_mon=3, tm_mday=19, tm_hour=11, tm_min=25, tm_sec=39, tm_wday=2, tm_yday=78, tm_isdst=0): Running test with 10 logs and templates pc,sc,pp,tg,ft,bl.
+”time.struct_time(tm_year=2025, tm_mon=3, tm_mday=19, tm_hour=11, tm_min=28, tm_sec=50, tm_wday=2, tm_yday=78, tm_isdst=0): Running test with 10 logs and templates pc,sc,pp,tg,ft,bl.
+”time.struct_time(tm_year=2025, tm_mon=3, tm_mday=19, tm_hour=11, tm_min=35, tm_sec=1, tm_wday=2, tm_yday=78, tm_isdst=0): Running test with 10 logs and templates pc,sc,pp,tg,ft,bl.
+”time.struct_time(tm_year=2025, tm_mon=3, tm_mday=19, tm_hour=11, tm_min=38, tm_sec=49, tm_wday=2, tm_yday=78, tm_isdst=0): Running test with 10 logs and templates pc,sc,pp,tg,ft,bl.
+”time.struct_time(tm_year=2025, tm_mon=3, tm_mday=19, tm_hour=15, tm_min=27, tm_sec=38, tm_wday=2, tm_yday=78, tm_isdst=0): Running test with 2 logs and templates pc,sc,pp,tg,ft,bl.
+”time.struct_time(tm_year=2025, tm_mon=3, tm_mday=19, tm_hour=15, tm_min=38, tm_sec=18, tm_wday=2, tm_yday=78, tm_isdst=0): Fished test with 2 logs and templates pc,sc,pp,tg,ft,bl.
+”time.struct_time(tm_year=2025, tm_mon=3, tm_mday=19, tm_hour=16, tm_min=38, tm_sec=44, tm_wday=2, tm_yday=78, tm_isdst=0): Running test with 2 logs and templates pc,sc,pp,tg,ft,bl.
+”time.struct_time(tm_year=2025, tm_mon=3, tm_mday=19, tm_hour=17, tm_min=16, tm_sec=6, tm_wday=2, tm_yday=78, tm_isdst=0): Running test with 2 logs and templates pc,sc,pp,tg,ft,bl.
+”time.struct_time(tm_year=2025, tm_mon=3, tm_mday=19, tm_hour=17, tm_min=20, tm_sec=9, tm_wday=2, tm_yday=78, tm_isdst=0): Running test with 2 logs and templates .
+”time.struct_time(tm_year=2025, tm_mon=3, tm_mday=19, tm_hour=17, tm_min=30, tm_sec=47, tm_wday=2, tm_yday=78, tm_isdst=0):Test failed for test_size=2 and template_configuration='.
+time.struct_time(tm_year=2025, tm_mon=3, tm_mday=19, tm_hour=17, tm_min=44, tm_sec=42, tm_wday=2, tm_yday=78, tm_isdst=0): Running test with 2 logs and templates .
+”time.struct_time(tm_year=2025, tm_mon=3, tm_mday=19, tm_hour=17, tm_min=55, tm_sec=19, tm_wday=2, tm_yday=78, tm_isdst=0):Test failed for test_size=2 and template_configuration='.

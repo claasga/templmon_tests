@@ -328,7 +328,7 @@ class PatientConsumer(AbstractConsumer):
             return None
         end_time = time.perf_counter()
         self.measured_times.append((end_time, end_time - self.measurement_start))
-        print(f"PC: measured time: {self.measured_times[-1]}")
+        # print(f"PC: measured time: {self.measured_times[-1]}")
         return end_time
 
     def finish_measurement(self):
@@ -401,15 +401,9 @@ class PatientConsumer(AbstractConsumer):
 
         if not actions:
             return
-        assert actions[-1].get("actionId") >= actions[0].get("actionId")
+        actions.sort(key=lambda x: x["orderId"])
         newest_action_status = actions[-1].get("actionStatus")
         if newest_action_status == ActionInstanceStateNames.PLANNED:
-            self.skipped_first_action_list_event = False
-        elif newest_action_status == ActionInstanceStateNames.IN_PROGRESS:
-            self.skipped_first_action_list_event = (
-                not self.skipped_first_action_list_event
-            )
-        if not self.skipped_first_action_list_event:
             return
         end_time = self._stop_measurement()
         self.send_event(

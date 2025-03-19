@@ -254,7 +254,7 @@ class OutputParser:
             return assignment_dicts
 
         while True:
-            print("OP: waiting for output")
+            # print("OP: waiting for output")
             line = await self.process.stdout.readline()
             if not line:
                 print("process terminated")
@@ -268,13 +268,13 @@ class OutputParser:
                 continue
             processing_finish_time = time.perf_counter()
             self.pending_inputs_owner.output_read.set()
-            print(f"OP: got {decoded_line[:-1]}")
+            # print(f"OP: got {decoded_line[:-1]}")
             corresponding_input, measurement_begin = (
                 await self.pending_inputs_owner.pending_inputs.get()
             )
-            print(
-                f"OP: Queue size is now {self.pending_inputs_owner.pending_inputs.qsize()}, consumed: {corresponding_input}"
-            )
+            # print(
+            #    f"OP: Queue size is now {self.pending_inputs_owner.pending_inputs.qsize()}, consumed: {corresponding_input}"
+            # )
             if corresponding_input == MonpolyLogEntry.COMMIT:
                 self.commit_count += 1
                 continue

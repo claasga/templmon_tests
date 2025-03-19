@@ -101,22 +101,22 @@ class RuleRunner:
 
         if self.monpoly.stdin:
             await self.pending_inputs.put((log_type, time.perf_counter()))
-            print(
-                f"RR: Queue size is now {self.pending_inputs.qsize()}, produced: {log_type}"
-            )
-            print(f"RR: Sending: {monpolified_log_entry}")
+            # print(
+            #    f"RR: Queue size is now {self.pending_inputs.qsize()}, produced: {log_type}"
+            # )
+            # print(f"RR: Sending: {monpolified_log_entry}")
             self.output_read = asyncio.Event()
             await self._send_and_process(monpolified_log_entry)
 
             await self.output_read.wait()
             self.output_read = asyncio.Event()
             await self.pending_inputs.put((MonpolyLogEntry.COMMIT, None))
-            print(
-                f"RR: Queue size is now {self.pending_inputs.qsize()}, produced: {MonpolyLogEntry.COMMIT}"
-            )
-            print(
-                f"RR: Sending: {self.log_transformer.generate_commit(monpolified_log_entry)}"
-            )
+            # print(
+            #    f"RR: Queue size is now {self.pending_inputs.qsize()}, produced: {MonpolyLogEntry.COMMIT}"
+            # )
+            # print(
+            #    f"RR: Sending: {self.log_transformer.generate_commit(monpolified_log_entry)}"
+            # )
             await self._send_and_process(
                 commit_entry := self.log_transformer.generate_commit(
                     monpolified_log_entry

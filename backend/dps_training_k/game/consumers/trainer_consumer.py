@@ -476,20 +476,24 @@ class TrainerConsumer(AbstractConsumer):
         )
 
     def singular_violation_event(self, event):
-        print("Singular violation event")
-        print(event)
+        pass
+        # print("Singular violation event")
+        # print(event)
 
     def durational_violation_start_event(self, event):
-        print("Durational violation start event")
-        print(event)
+        pass
+        # print("Durational violation start event")
+        # print(event)
 
     def durational_violation_end_event(self, event):
-        print("Durational violation end event")
-        print(event)
+        pass
+        # print("Durational violation end event")
+        # print(event)
 
     def durational_violation_update_event(self, event):
-        print("Durational violation update event")
-        print(event)
+        pass
+        # print("Durational violation update event")
+        # print(event)
 
     def violation_processing_finished_event(self, event):
         if self.closed:
@@ -500,9 +504,9 @@ class TrainerConsumer(AbstractConsumer):
         rule_id = f'{event["template_name"]}_{event["rule_name"]}'
         monpoly_measuring_start = float(event["monpoly_measuring_start"])
         monpoly_measuring_end = float(event["monpoly_measuring_end"])
-        print(
-            f"TC: measured_logtype == {patient_consumer.measuring_instance.measured_logtype if patient_consumer.measuring_instance else None}"
-        )
+        # print(
+        #    f"TC: measured_logtype == {patient_consumer.measuring_instance.measured_logtype if patient_consumer.measuring_instance else None}"
+        # )
         if not patient_consumer.measuring_instance:
             return
         measured_logtype = patient_consumer.measuring_instance.measured_logtype
@@ -510,7 +514,7 @@ class TrainerConsumer(AbstractConsumer):
             patient_consumer.measuring_instance.patient_frontend_id
         )
         measurement_start = patient_consumer.measuring_instance.measurement_start
-        print(f"TC: own logtype = {logtype}, fetched logtype = {measured_logtype}")
+        # print(f"TC: own logtype = {logtype}, fetched logtype = {measured_logtype}")
         if logtype != measured_logtype:
             return
 
@@ -525,9 +529,9 @@ class TrainerConsumer(AbstractConsumer):
             monpoly_measuring_end - monpoly_measuring_start,
         )
         # print(f"TC: current measurments: {self.patient_instances_latencies}")
-        print(
-            f"TC: measured time: {self.patient_instances_latencies[currently_tested_patient][-1]}"
-        )
+        # print(
+        #    f"TC: measured time: {self.patient_instances_latencies[currently_tested_patient][-1]}"
+        # )
         if self.received_rules_count == self.rules_count:
             self.received_rules_count = 0
             patient_consumer.measuring_instance.finish_measurement()

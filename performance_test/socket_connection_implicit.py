@@ -21,7 +21,7 @@ TRAINER_WS_URI = "ws://localhost:8000/ws/trainer"
 PATIENT_WS_URI = "ws://localhost:8000/ws/patient"
 
 BZ_MESSGERAET_ID = UUID("bec79e8b-14b2-48a1-9ea8-c678e48f352e")
-REACTION_TIME = 12
+REACTION_TIME = 120
 
 
 class PatientGroup:
@@ -62,7 +62,7 @@ class PatientGroup:
             self.current_time,  # 4
             self.activate_next_group,  # 5
             self.await_finishing,  # 6
-            self.pass_time,  # 7
+            # self.pass_time,  # 7
             self.unassign_personnel,  # 8
             self.unassign_material,  # 9
             self.switch_to_competing_patient,  # 10
@@ -97,9 +97,8 @@ class PatientGroup:
             while datetime.datetime.now() < cls.simulation_end:
                 await cls.groups[i]._execute_plan()
                 i = (i + 1) % len(cls.groups)
-        except Exception as e:
-            print(e)
         finally:
+            await asyncio.sleep(16)
             await trainer_ws.send(json.dumps({"messageType": "exercise-end"}))
             message = await trainer_ws.recv()
             message_type = json.loads(message).get("messageType")
@@ -141,6 +140,7 @@ class PatientGroup:
                     await self.cancel_current_action()
                 self._patients_step[update_index] = 0
             print(f"next step is now {self._patients_step[0]}", flush=True)
+            await asyncio.sleep(0.1)
 
     async def skip_until_message(self, websocket_instance, message_type):
         state_change, message = await self.recv_and_check_for_state_change(
@@ -250,7 +250,6 @@ class PatientGroup:
         return False, False, -1
 
     async def await_finishing(self):
-        some_list = [1, 2, 3, 4, 5]
         action_finished = False
         state_change = False
         while not action_finished:
@@ -279,7 +278,7 @@ class PatientGroup:
         return False, True, 0
 
     async def pass_time(self):
-        time_to_pass = 15
+        time_to_pass = 17
         timedelta = (datetime.datetime.now() - self.examination_start).total_seconds()
         if timedelta < time_to_pass:
             await asyncio.sleep(time_to_pass - timedelta)
@@ -404,6 +403,22 @@ async def setup_exercise(
     exercise_json = await trainer_ws.recv()
     exercise = json.loads(exercise_json)
     print(exercise)
+    await trainer_ws.send(json.dumps({"messageType": "area-add"}))
+    exercise_json = await trainer_ws.recv()
+    exercise = json.loads(exercise_json)
+    print(exercise)
+    idle_areaID = int(exercise.get("exercise").get("areas")[-1].get("areaId"))
+    await trainer_ws.send(
+        json.dumps(
+            {
+                "messageType": "patient-add",
+                "areaId": idle_areaID,
+                "patientName": f"Idle Patient {idle_areaID}",
+                "code": 1006,
+            }
+        )
+    )
+    exercise_json = await trainer_ws.recv()
     patient_ids = []
     exercise_json = None
     for i in range(0, int(patient_count / 2)):
@@ -667,7 +682,7 @@ async def template_test(patient_count, area_size, templates_to_use=None):
         await PatientGroupClass.execute_simulation(trainer_ws)
     except Exception as e:
         print(e)
-        raise
+        raise e
     return True
 
 
