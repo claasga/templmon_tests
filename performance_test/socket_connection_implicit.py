@@ -584,7 +584,7 @@ async def configure_templates(
                     "patient_id": 3,
                     "target_time": REACTION_TIME - 1,
                     "target_level": "Yellow",
-                    "fullfillment": True,
+                    "fullfillment": False,
                 },
             },
         ],
